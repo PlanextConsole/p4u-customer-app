@@ -32,13 +32,24 @@ class ProductTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.s('title', 'Product'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(product.s('title', 'Product'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text(product.s('vendor_name'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                Text(product.s('vendor_name'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(color: AppColors.muted, fontSize: 12)),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Expanded(child: Text(money(product.n('price')), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary))),
+                    Expanded(
+                        child: Text(money(product.n('price')),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.primary))),
                     if (product.n('rating') > 0) _Rating(product.n('rating')),
                   ],
                 ),
@@ -68,11 +79,18 @@ class ServiceTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(service.s('title', 'Service'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(service.s('title', 'Service'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text(service.s('category_name'), style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                Text(service.s('category_name'),
+                    style:
+                        const TextStyle(color: AppColors.muted, fontSize: 12)),
                 const SizedBox(height: 6),
-                Text(money(service.n('price')), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary)),
+                Text(money(service.n('price')),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900, color: AppColors.primary)),
               ],
             ),
           ),
@@ -95,17 +113,26 @@ class ClassifiedTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RemoteImage(url: ad.s('image_url', ad.s('image')), width: 88, height: 88),
+          RemoteImage(
+              url: ad.s('image_url', ad.s('image')), width: 88, height: 88),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(ad.s('title', 'Classified'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(ad.s('title', 'Classified'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text(ad.s('category'), style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                Text(ad.s('category'),
+                    style:
+                        const TextStyle(color: AppColors.muted, fontSize: 12)),
                 const SizedBox(height: 6),
-                Text(ad.n('price') > 0 ? money(ad.n('price')) : ad.s('location'), style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
+                Text(
+                    ad.n('price') > 0 ? money(ad.n('price')) : ad.s('location'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, color: AppColors.primary)),
               ],
             ),
           ),
@@ -128,7 +155,10 @@ class PropertyTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RemoteImage(url: property.s('image_url', property.s('cover_image')), height: 150, width: double.infinity),
+          RemoteImage(
+              url: property.s('image_url', property.s('cover_image')),
+              height: 150,
+              width: double.infinity),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -136,14 +166,25 @@ class PropertyTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text(property.s('title', 'Property'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900))),
+                    Expanded(
+                        child: Text(property.s('title', 'Property'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900))),
                     StatusBadge(property.s('transaction_type', 'sale')),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text('${property.s('bhk')} BHK - ${property.s('locality', property.s('city'))}', style: const TextStyle(color: AppColors.muted)),
+                Text(
+                    '${property.s('bhk')} BHK - ${property.s('locality', property.s('city'))}',
+                    style: const TextStyle(color: AppColors.muted)),
                 const SizedBox(height: 8),
-                Text(money(property.n('price')), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary, fontSize: 16)),
+                Text(money(property.n('price')),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primary,
+                        fontSize: 16)),
               ],
             ),
           ),
@@ -161,12 +202,16 @@ class _Rating extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: .15), borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: .15),
+          borderRadius: BorderRadius.circular(8)),
       child: Row(
         children: [
           const Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
           const SizedBox(width: 2),
-          Text(value.toStringAsFixed(1), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+          Text(value.toStringAsFixed(1),
+              style:
+                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
         ],
       ),
     );

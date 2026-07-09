@@ -50,7 +50,11 @@ class CustomerScaffold extends ConsumerWidget {
       },
       child: Scaffold(
         appBar: AppBar(
-          leading: showBack ? IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded)) : null,
+          leading: showBack
+              ? IconButton(
+                  onPressed: () => context.pop(),
+                  icon: const Icon(Icons.arrow_back_rounded))
+              : null,
           titleSpacing: showBack ? 0 : 16,
           title: Row(
             children: [
@@ -62,10 +66,13 @@ class CustomerScaffold extends ConsumerWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Image.asset('assets/images/p4u-logo.png', fit: BoxFit.contain),
+                child: Image.asset('assets/images/p4u-logo.png',
+                    fit: BoxFit.contain),
               ),
               const SizedBox(width: 8),
-              Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Flexible(
+                  child: Text(title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
             ],
           ),
           actions: [
@@ -77,7 +84,9 @@ class CustomerScaffold extends ConsumerWidget {
             if (customer == null)
               TextButton(
                 onPressed: () => context.go('/app/login'),
-                child: const Text('Login', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                child: const Text('Login',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
               )
             else
               IconButton(
@@ -86,14 +95,21 @@ class CustomerScaffold extends ConsumerWidget {
                 icon: CircleAvatar(
                   radius: 14,
                   backgroundColor: Colors.white.withValues(alpha: .18),
-                  child: Text(customer.name.isEmpty ? 'U' : customer.name.characters.first.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  child: Text(
+                      customer.name.isEmpty
+                          ? 'U'
+                          : customer.name.characters.first.toUpperCase(),
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 12)),
                 ),
               ),
             ...?actions,
           ],
         ),
         body: child,
-        bottomNavigationBar: bottomNavIndex == null ? null : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
+        bottomNavigationBar: bottomNavIndex == null
+            ? null
+            : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
       ),
     );
   }
@@ -113,7 +129,8 @@ class _CustomerBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = selectedIndex.clamp(0, CustomerScaffold.nav.length - 1).toInt();
+    final selected =
+        selectedIndex.clamp(0, CustomerScaffold.nav.length - 1).toInt();
     return SafeArea(
       top: false,
       child: Container(
@@ -167,7 +184,11 @@ class _BottomNavItem extends StatelessWidget {
               color: selected ? AppColors.accent : Colors.transparent,
               borderRadius: BorderRadius.circular(17),
             ),
-            child: Icon(item.icon, size: 23, color: selected ? AppColors.primary : AppColors.brandDark.withValues(alpha: .72)),
+            child: Icon(item.icon,
+                size: 23,
+                color: selected
+                    ? AppColors.primary
+                    : AppColors.brandDark.withValues(alpha: .72)),
           ),
           const SizedBox(height: 2),
           FittedBox(
@@ -179,7 +200,9 @@ class _BottomNavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-                color: selected ? AppColors.primary : AppColors.brandDark.withValues(alpha: .72),
+                color: selected
+                    ? AppColors.primary
+                    : AppColors.brandDark.withValues(alpha: .72),
               ),
             ),
           ),
@@ -190,7 +213,10 @@ class _BottomNavItem extends StatelessWidget {
 }
 
 class PageShell extends StatelessWidget {
-  const PageShell({required this.children, this.padding = const EdgeInsets.all(16), super.key});
+  const PageShell(
+      {required this.children,
+      this.padding = const EdgeInsets.all(16),
+      super.key});
 
   final List<Widget> children;
   final EdgeInsetsGeometry padding;
@@ -204,7 +230,9 @@ class PageShell extends StatelessWidget {
         children: [
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children),
           ),
         ],
       ),

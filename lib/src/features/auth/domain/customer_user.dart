@@ -19,8 +19,14 @@ class CustomerUser {
   final bool passwordSet;
   final bool justLoggedIn;
 
-  factory CustomerUser.fromRole(Map<String, dynamic> role, Map<String, dynamic>? customer, String supabaseUid, String fallbackEmail) {
-    final id = role['customer_id']?.toString() ?? customer?['id']?.toString() ?? supabaseUid;
+  factory CustomerUser.fromRole(
+      Map<String, dynamic> role,
+      Map<String, dynamic>? customer,
+      String supabaseUid,
+      String fallbackEmail) {
+    final id = role['customer_id']?.toString() ??
+        customer?['id']?.toString() ??
+        supabaseUid;
     final rawEmail = customer?['email']?.toString() ?? fallbackEmail;
     final email = rawEmail.contains('@phone.planext4u.local') ? '' : rawEmail;
     return CustomerUser(
@@ -34,7 +40,8 @@ class CustomerUser {
     );
   }
 
-  factory CustomerUser.fromApi(Map<String, dynamic> profile, {String? fallbackId, String? userId}) {
+  factory CustomerUser.fromApi(Map<String, dynamic> profile,
+      {String? fallbackId, String? userId}) {
     final id = (profile['id'] ??
             profile['customerId'] ??
             profile['customer_id'] ??

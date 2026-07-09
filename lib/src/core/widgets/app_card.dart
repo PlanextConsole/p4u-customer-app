@@ -50,9 +50,17 @@ class SectionHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Text(title,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800)),
                 if (subtitle != null)
-                  Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+                  Text(subtitle!,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: AppColors.muted)),
               ],
             ),
           ),
@@ -70,9 +78,17 @@ class StatusBadge extends StatelessWidget {
 
   Color _color() {
     final s = status.toLowerCase();
-    if (['active', 'verified', 'paid', 'delivered', 'completed', 'approved'].contains(s)) return AppColors.success;
-    if (['pending', 'placed', 'in_progress', 'processing', 'open'].contains(s)) return AppColors.warning;
-    if (['cancelled', 'rejected', 'failed', 'blocked'].contains(s)) return AppColors.danger;
+    if (['active', 'verified', 'paid', 'delivered', 'completed', 'approved']
+        .contains(s)) {
+      return AppColors.success;
+    }
+    if (['pending', 'placed', 'in_progress', 'processing', 'open']
+        .contains(s)) {
+      return AppColors.warning;
+    }
+    if (['cancelled', 'rejected', 'failed', 'blocked'].contains(s)) {
+      return AppColors.danger;
+    }
     return AppColors.info;
   }
 
@@ -89,7 +105,8 @@ class StatusBadge extends StatelessWidget {
       child: Text(
         status.replaceAll('_', ' ').toUpperCase(),
         maxLines: 1,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800),
+        style:
+            TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -119,9 +136,19 @@ class EmptyState extends StatelessWidget {
           children: [
             Icon(icon, size: 46, color: AppColors.primary),
             const SizedBox(height: 12),
-            Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
-            Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted)),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: AppColors.muted)),
             if (action != null) ...[
               const SizedBox(height: 16),
               action!,
@@ -157,7 +184,9 @@ class AsyncStateView extends StatelessWidget {
         icon: Icons.cloud_off_rounded,
         title: 'Could not load data',
         message: error.toString(),
-        action: onRetry == null ? null : FilledButton(onPressed: onRetry, child: const Text('Retry')),
+        action: onRetry == null
+            ? null
+            : FilledButton(onPressed: onRetry, child: const Text('Retry')),
       );
     }
     return child;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 
 class RemoteImage extends StatelessWidget {
@@ -22,7 +23,8 @@ class RemoteImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final candidate = url?.trim() ?? '';
+    final raw = url?.trim() ?? '';
+    final candidate = _resolveUrl(raw);
     Widget image;
     if (candidate.startsWith('http')) {
       image = Image.network(
@@ -37,9 +39,17 @@ class RemoteImage extends StatelessWidget {
         },
       );
     } else if (candidate.startsWith('assets/')) {
-      image = Image.asset(candidate, height: height, width: width, fit: fit, errorBuilder: (_, __, ___) => _fallback());
+      image = Image.asset(candidate,
+          height: height,
+          width: width,
+          fit: fit,
+          errorBuilder: (_, __, ___) => _fallback());
     } else if (assetFallback != null) {
-      image = Image.asset(assetFallback!, height: height, width: width, fit: fit, errorBuilder: (_, __, ___) => _fallback());
+      image = Image.asset(assetFallback!,
+          height: height,
+          width: width,
+          fit: fit,
+          errorBuilder: (_, __, ___) => _fallback());
     } else {
       image = _fallback();
     }
@@ -48,6 +58,14 @@ class RemoteImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(borderRadius),
       child: SizedBox(height: height, width: width, child: image),
     );
+  }
+
+  String _resolveUrl(String raw) {
+    if (raw.isEmpty || raw.startsWith('http') || raw.startsWith('assets/')) {
+      return raw;
+    }
+    final normalized = raw.startsWith('/') ? raw : '/$raw';
+    return '${ApiClient.baseUrl}$normalized';
   }
 
   Widget _fallback({IconData icon = Icons.image_not_supported_rounded}) {

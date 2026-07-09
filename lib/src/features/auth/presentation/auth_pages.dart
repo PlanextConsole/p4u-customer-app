@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../features/customer/data/customer_providers.dart';
@@ -45,7 +46,9 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     }
     setState(() => _loading = true);
     try {
-      await ref.read(authRepositoryProvider).signInWithPassword(_email.text.trim(), _password.text);
+      await ref
+          .read(authRepositoryProvider)
+          .signInWithPassword(_email.text.trim(), _password.text);
       ref.invalidate(customerAuthStateProvider);
       if (mounted) context.go('/app');
     } catch (e) {
@@ -62,7 +65,9 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
       return;
     }
     if (Firebase.apps.isEmpty) {
-      _snack('Firebase is not configured for this native app yet.');
+      _snack(
+        'Firebase is not configured. Add SHA fingerprints in Firebase Console and replace android/app/google-services.json, then rebuild the app.',
+      );
       return;
     }
     setState(() => _loading = true);
@@ -75,7 +80,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
         verificationFailed: (error) {
           if (!mounted) return;
           setState(() => _loading = false);
-          _snack(error.message ?? 'OTP failed. Please try again.');
+          _snack(_friendly(error));
         },
         codeSent: (verificationId, _) {
           if (!mounted) return;
@@ -85,7 +90,8 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
             _loading = false;
           });
         },
-        codeAutoRetrievalTimeout: (verificationId) => _verificationId = verificationId,
+        codeAutoRetrievalTimeout: (verificationId) =>
+            _verificationId = verificationId,
       );
     } catch (e) {
       _snack(_friendly(e));
@@ -100,7 +106,8 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     }
     setState(() => _loading = true);
     try {
-      final credential = firebase.PhoneAuthProvider.credential(verificationId: _verificationId!, smsCode: _otp.text);
+      final credential = firebase.PhoneAuthProvider.credential(
+          verificationId: _verificationId!, smsCode: _otp.text);
       await _signInWithCredential(credential);
     } catch (e) {
       _snack(_friendly(e));
@@ -108,15 +115,22 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     }
   }
 
-  Future<void> _signInWithCredential(firebase.PhoneAuthCredential credential) async {
+  Future<void> _signInWithCredential(
+      firebase.PhoneAuthCredential credential) async {
     final auth = firebase.FirebaseAuth.instance;
-    final result = await auth.signInWithCredential(credential);
-    final token = await result.user?.getIdToken();
-    if (token == null) throw StateError('Missing Firebase ID token');
-    await ref.read(authRepositoryProvider).signInWithFirebaseIdToken(token);
-    await auth.signOut();
-    ref.invalidate(customerAuthStateProvider);
-    if (mounted) context.go('/app');
+    try {
+      final result = await auth.signInWithCredential(credential);
+      final token = await result.user?.getIdToken(true);
+      if (token == null) throw StateError('Missing Firebase ID token');
+      await ref.read(authRepositoryProvider).signInWithFirebaseIdToken(token);
+      ref.invalidate(customerAuthStateProvider);
+      if (mounted) context.go('/app');
+    } catch (e) {
+      _snack(_friendly(e));
+    } finally {
+      await auth.signOut().catchError((_) {});
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -127,7 +141,10 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFF7E8), Colors.white, Color(0xFFE8FFFF)]),
+          gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFF7E8), Colors.white, Color(0xFFE8FFFF)]),
         ),
         child: SafeArea(
           child: ListView(
@@ -140,7 +157,8 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                   child: Card(
                     elevation: 16,
                     shadowColor: AppColors.brandDark.withValues(alpha: .12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24)),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -148,19 +166,32 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(28),
-                          decoration: const BoxDecoration(gradient: LinearGradient(colors: [AppColors.primary, AppColors.primaryDark])),
+                          decoration: const BoxDecoration(
+                              gradient: LinearGradient(colors: [
+                            AppColors.primary,
+                            AppColors.primaryDark
+                          ])),
                           child: Column(
                             children: [
                               Container(
                                 width: 74,
                                 height: 74,
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                                child: Image.asset('assets/images/p4u-logo.png', fit: BoxFit.contain),
+                                decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20)),
+                                child: Image.asset('assets/images/p4u-logo.png',
+                                    fit: BoxFit.contain),
                               ),
                               const SizedBox(height: 12),
-                              const Text('Planext 4u', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-                              const Text('Shop, services, social and homes', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              const Text('Planext 4u',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900)),
+                              const Text('Shop, services, social and homes',
+                                  style: TextStyle(
+                                      color: Colors.white70, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -174,18 +205,25 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                 TextField(
                                   controller: _email,
                                   keyboardType: TextInputType.emailAddress,
-                                  decoration: const InputDecoration(prefixIcon: Icon(Icons.mail_outline_rounded), hintText: 'Enter E-mail ID'),
+                                  decoration: const InputDecoration(
+                                      prefixIcon:
+                                          Icon(Icons.mail_outline_rounded),
+                                      hintText: 'Enter E-mail ID'),
                                 ),
                                 const SizedBox(height: 14),
                                 TextField(
                                   controller: _password,
                                   obscureText: !_showPassword,
                                   decoration: InputDecoration(
-                                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                                    prefixIcon:
+                                        const Icon(Icons.lock_outline_rounded),
                                     hintText: 'Password',
                                     suffixIcon: IconButton(
-                                      onPressed: () => setState(() => _showPassword = !_showPassword),
-                                      icon: Icon(_showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+                                      onPressed: () => setState(
+                                          () => _showPassword = !_showPassword),
+                                      icon: Icon(_showPassword
+                                          ? Icons.visibility_off_rounded
+                                          : Icons.visibility_rounded),
                                     ),
                                   ),
                                   onSubmitted: (_) => _submitPassword(),
@@ -195,34 +233,73 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                   controller: _phone,
                                   keyboardType: TextInputType.phone,
                                   maxLength: 10,
-                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                  decoration: const InputDecoration(prefixIcon: Icon(Icons.phone_rounded), prefixText: '+91 ', hintText: 'Enter phone number', counterText: ''),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly
+                                  ],
+                                  decoration: const InputDecoration(
+                                      prefixIcon: Icon(Icons.phone_rounded),
+                                      prefixText: '+91 ',
+                                      hintText: 'Enter phone number',
+                                      counterText: ''),
                                 ),
                               ] else ...[
-                                Text('Enter code sent to +91 ${_phone.text}', style: const TextStyle(color: AppColors.muted)),
+                                Text('Enter code sent to +91 ${_phone.text}',
+                                    style: const TextStyle(
+                                        color: AppColors.muted)),
                                 const SizedBox(height: 10),
                                 TextField(
                                   controller: _otp,
                                   keyboardType: TextInputType.number,
                                   maxLength: 6,
                                   textAlign: TextAlign.center,
-                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: 8),
-                                  decoration: const InputDecoration(hintText: '000000', counterText: ''),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly
+                                  ],
+                                  style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 8),
+                                  decoration: const InputDecoration(
+                                      hintText: '000000', counterText: ''),
                                 ),
                               ],
                               const SizedBox(height: 18),
                               FilledButton.icon(
-                                onPressed: _loading ? null : (_passwordMode ? _submitPassword : (_otpSent ? _verifyOtp : _sendOtp)),
+                                onPressed: _loading
+                                    ? null
+                                    : (_passwordMode
+                                        ? _submitPassword
+                                        : (_otpSent ? _verifyOtp : _sendOtp)),
                                 icon: _loading
-                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                    : Icon(_passwordMode ? Icons.login_rounded : (_otpSent ? Icons.verified_user_rounded : Icons.arrow_forward_rounded)),
-                                label: Text(_loading ? 'Please wait...' : (_passwordMode ? 'Sign In' : (_otpSent ? 'Verify OTP' : 'Send OTP'))),
-                                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
+                                    : Icon(_passwordMode
+                                        ? Icons.login_rounded
+                                        : (_otpSent
+                                            ? Icons.verified_user_rounded
+                                            : Icons.arrow_forward_rounded)),
+                                label: Text(_loading
+                                    ? 'Please wait...'
+                                    : (_passwordMode
+                                        ? 'Sign In'
+                                        : (_otpSent
+                                            ? 'Verify OTP'
+                                            : 'Send OTP'))),
+                                style: FilledButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(52)),
                               ),
                               const SizedBox(height: 10),
-                              TextButton(onPressed: () => context.go('/app/forgot-password'), child: const Text('Forgot Password?')),
-                              TextButton(onPressed: () => context.go('/app/register'), child: const Text('New user? Register here')),
+                              TextButton(
+                                  onPressed: () =>
+                                      context.go('/app/forgot-password'),
+                                  child: const Text('Forgot Password?')),
+                              TextButton(
+                                  onPressed: () => context.go('/app/register'),
+                                  child: const Text('New user? Register here')),
                             ],
                           ),
                         ),
@@ -242,17 +319,32 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     return Container(
       height: 48,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(26), color: const Color(0xFFF7FAFA)),
+      decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(26),
+          color: const Color(0xFFF7FAFA)),
       child: Row(
         children: [
-          _modeButton(label: 'Phone OTP', icon: Icons.phone_rounded, selected: !_passwordMode, onTap: () => setState(() => _passwordMode = false)),
-          _modeButton(label: 'Password', icon: Icons.mail_outline_rounded, selected: _passwordMode, onTap: () => setState(() => _passwordMode = true)),
+          _modeButton(
+              label: 'Phone OTP',
+              icon: Icons.phone_rounded,
+              selected: !_passwordMode,
+              onTap: () => setState(() => _passwordMode = false)),
+          _modeButton(
+              label: 'Password',
+              icon: Icons.mail_outline_rounded,
+              selected: _passwordMode,
+              onTap: () => setState(() => _passwordMode = true)),
         ],
       ),
     );
   }
 
-  Widget _modeButton({required String label, required IconData icon, required bool selected, required VoidCallback onTap}) {
+  Widget _modeButton(
+      {required String label,
+      required IconData icon,
+      required bool selected,
+      required VoidCallback onTap}) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -261,13 +353,23 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
           height: double.infinity,
           margin: const EdgeInsets.symmetric(horizontal: 1),
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(color: selected ? const Color(0xFFD5F1F0) : Colors.transparent, borderRadius: BorderRadius.circular(22)),
+          decoration: BoxDecoration(
+              color: selected ? const Color(0xFFD5F1F0) : Colors.transparent,
+              borderRadius: BorderRadius.circular(22)),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(selected ? Icons.check_rounded : icon, size: 18, color: AppColors.brandDark),
+              Icon(selected ? Icons.check_rounded : icon,
+                  size: 18, color: AppColors.brandDark),
               const SizedBox(width: 6),
-              Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)))),
+              Flexible(
+                  child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(label,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800)))),
             ],
           ),
         ),
@@ -275,14 +377,16 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     );
   }
 
-  void _snack(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
 }
 
 class CustomerRegisterPage extends ConsumerStatefulWidget {
   const CustomerRegisterPage({super.key});
 
   @override
-  ConsumerState<CustomerRegisterPage> createState() => _CustomerRegisterPageState();
+  ConsumerState<CustomerRegisterPage> createState() =>
+      _CustomerRegisterPageState();
 }
 
 class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
@@ -317,10 +421,14 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
   Future<void> _sendOtp() async {
     final digits = _mobile.text.replaceAll(RegExp(r'\D'), '');
     if (_name.text.trim().isEmpty) return _snack('Name is required');
-    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(digits)) return _snack('Please enter a valid 10-digit mobile number');
+    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(digits)) {
+      return _snack('Please enter a valid 10-digit mobile number');
+    }
     if (!_email.text.contains('@')) return _snack('Please enter a valid email');
     if (!_accepted) return _snack('Please accept terms and privacy policy');
-    if (Firebase.apps.isEmpty) return _snack('Firebase is not configured for this native app yet.');
+    if (Firebase.apps.isEmpty) {
+      return _snack('Firebase is not configured for this native app yet.');
+    }
     setState(() => _loading = true);
     try {
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
@@ -329,7 +437,7 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
         verificationFailed: (error) {
           if (!mounted) return;
           setState(() => _loading = false);
-          _snack(error.message ?? 'OTP failed. Please try again.');
+          _snack(_friendly(error));
         },
         codeSent: (verificationId, _) {
           if (!mounted) return;
@@ -339,7 +447,8 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
             _loading = false;
           });
         },
-        codeAutoRetrievalTimeout: (verificationId) => _verificationId = verificationId,
+        codeAutoRetrievalTimeout: (verificationId) =>
+            _verificationId = verificationId,
       );
     } catch (e) {
       _snack(_friendly(e));
@@ -348,10 +457,13 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
   }
 
   Future<void> _verifyOtp() async {
-    if (_verificationId == null || _otp.text.length != 6) return _snack('Enter the 6-digit OTP');
+    if (_verificationId == null || _otp.text.length != 6) {
+      return _snack('Enter the 6-digit OTP');
+    }
     setState(() => _loading = true);
     try {
-      final credential = firebase.PhoneAuthProvider.credential(verificationId: _verificationId!, smsCode: _otp.text);
+      final credential = firebase.PhoneAuthProvider.credential(
+          verificationId: _verificationId!, smsCode: _otp.text);
       await _completeOtp(credential);
     } catch (e) {
       _snack(_friendly(e));
@@ -362,7 +474,7 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
   Future<void> _completeOtp(firebase.PhoneAuthCredential credential) async {
     final auth = firebase.FirebaseAuth.instance;
     final result = await auth.signInWithCredential(credential);
-    _firebaseToken = await result.user?.getIdToken();
+    _firebaseToken = await result.user?.getIdToken(true);
     await auth.signOut();
     if (_firebaseToken == null) throw StateError('Missing Firebase ID token');
     if (mounted) {
@@ -375,8 +487,12 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
 
   Future<void> _register() async {
     if (_firebaseToken == null) return _snack('Please verify OTP first');
-    if (_password.text.length < 8) return _snack('Password must be at least 8 characters');
-    if (_password.text != _confirmPassword.text) return _snack('Passwords do not match');
+    if (_password.text.length < 8) {
+      return _snack('Password must be at least 8 characters');
+    }
+    if (_password.text != _confirmPassword.text) {
+      return _snack('Passwords do not match');
+    }
     setState(() => _loading = true);
     try {
       await ref.read(authRepositoryProvider).registerWithFirebaseIdToken(
@@ -384,8 +500,11 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
             name: _name.text.trim(),
             email: _email.text.trim(),
             mobile: '+91${_mobile.text}',
-            occupation: _occupation.text.trim().isEmpty ? null : _occupation.text.trim(),
-            referralCode: _referral.text.trim().isEmpty ? null : _referral.text.trim(),
+            occupation: _occupation.text.trim().isEmpty
+                ? null
+                : _occupation.text.trim(),
+            referralCode:
+                _referral.text.trim().isEmpty ? null : _referral.text.trim(),
           );
       await ref.read(authRepositoryProvider).updatePassword(_password.text);
       ref.invalidate(customerAuthStateProvider);
@@ -404,52 +523,110 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Center(child: Image.asset('assets/images/p4u-logo.png', width: 86, height: 86)),
+          Center(
+              child: Image.asset('assets/images/p4u-logo.png',
+                  width: 86, height: 86)),
           const SizedBox(height: 14),
           AppCard(
             child: Column(
               children: [
-                TextField(controller: _name, decoration: const InputDecoration(prefixIcon: Icon(Icons.person_rounded), hintText: 'Full Name *')),
+                TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.person_rounded),
+                        hintText: 'Full Name *')),
                 const SizedBox(height: 12),
-                TextField(controller: _mobile, maxLength: 10, inputFormatters: [FilteringTextInputFormatter.digitsOnly], keyboardType: TextInputType.phone, decoration: const InputDecoration(prefixIcon: Icon(Icons.phone_rounded), prefixText: '+91 ', hintText: 'Mobile Number *', counterText: '')),
+                TextField(
+                    controller: _mobile,
+                    maxLength: 10,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.phone_rounded),
+                        prefixText: '+91 ',
+                        hintText: 'Mobile Number *',
+                        counterText: '')),
                 const SizedBox(height: 12),
-                TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(prefixIcon: Icon(Icons.mail_rounded), hintText: 'Email *')),
+                TextField(
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.mail_rounded),
+                        hintText: 'Email *')),
                 const SizedBox(height: 12),
-                TextField(controller: _occupation, decoration: const InputDecoration(prefixIcon: Icon(Icons.work_rounded), hintText: 'Occupation')),
+                TextField(
+                    controller: _occupation,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.work_rounded),
+                        hintText: 'Occupation')),
                 const SizedBox(height: 12),
-                TextField(controller: _referral, decoration: const InputDecoration(prefixIcon: Icon(Icons.card_giftcard_rounded), hintText: 'Referral Code')),
+                TextField(
+                    controller: _referral,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.card_giftcard_rounded),
+                        hintText: 'Referral Code')),
                 CheckboxListTile(
                   value: _accepted,
-                  onChanged: (value) => setState(() => _accepted = value ?? false),
+                  onChanged: (value) =>
+                      setState(() => _accepted = value ?? false),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('I accept Terms & Privacy Policy'),
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
                 if (_otpSent && !_verified) ...[
-                  TextField(controller: _otp, maxLength: 6, textAlign: TextAlign.center, inputFormatters: [FilteringTextInputFormatter.digitsOnly], keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Enter OTP', counterText: '')),
+                  TextField(
+                      controller: _otp,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          hintText: 'Enter OTP', counterText: '')),
                   const SizedBox(height: 10),
-                  FilledButton.icon(onPressed: _loading ? null : _verifyOtp, icon: const Icon(Icons.verified_user_rounded), label: const Text('Verify OTP')),
+                  FilledButton.icon(
+                      onPressed: _loading ? null : _verifyOtp,
+                      icon: const Icon(Icons.verified_user_rounded),
+                      label: const Text('Verify OTP')),
                 ] else if (!_verified) ...[
-                  FilledButton.icon(onPressed: _loading ? null : _sendOtp, icon: const Icon(Icons.arrow_forward_rounded), label: Text(_loading ? 'Please wait...' : 'Send OTP')),
+                  FilledButton.icon(
+                      onPressed: _loading ? null : _sendOtp,
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: Text(_loading ? 'Please wait...' : 'Send OTP')),
                 ] else ...[
                   const StatusBadge('phone verified'),
                   const SizedBox(height: 12),
-                  TextField(controller: _password, obscureText: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_rounded), hintText: 'Create password')),
+                  TextField(
+                      controller: _password,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.lock_rounded),
+                          hintText: 'Create password')),
                   const SizedBox(height: 12),
-                  TextField(controller: _confirmPassword, obscureText: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_outline_rounded), hintText: 'Confirm password')),
+                  TextField(
+                      controller: _confirmPassword,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.lock_outline_rounded),
+                          hintText: 'Confirm password')),
                   const SizedBox(height: 14),
-                  FilledButton.icon(onPressed: _loading ? null : _register, icon: const Icon(Icons.person_add_rounded), label: Text(_loading ? 'Creating...' : 'Create Account')),
+                  FilledButton.icon(
+                      onPressed: _loading ? null : _register,
+                      icon: const Icon(Icons.person_add_rounded),
+                      label: Text(_loading ? 'Creating...' : 'Create Account')),
                 ],
               ],
             ),
           ),
-          TextButton(onPressed: () => context.go('/app/login'), child: const Text('Already registered? Login')),
+          TextButton(
+              onPressed: () => context.go('/app/login'),
+              child: const Text('Already registered? Login')),
         ],
       ),
     );
   }
 
-  void _snack(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
 }
 
 class ForgotPasswordPage extends ConsumerStatefulWidget {
@@ -469,7 +646,12 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
       title: 'Forgot Password',
       child: Column(
         children: [
-          TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(prefixIcon: Icon(Icons.mail_rounded), hintText: 'Email address')),
+          TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.mail_rounded),
+                  hintText: 'Email address')),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _loading
@@ -477,8 +659,14 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                 : () async {
                     setState(() => _loading = true);
                     try {
-                      await ref.read(authRepositoryProvider).sendPasswordReset(_email.text.trim());
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password reset email sent.')));
+                      await ref
+                          .read(authRepositoryProvider)
+                          .sendPasswordReset(_email.text.trim());
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Password reset email sent.')));
+                      }
                     } finally {
                       if (mounted) setState(() => _loading = false);
                     }
@@ -495,7 +683,8 @@ class ResetPasswordPage extends StatelessWidget {
   const ResetPasswordPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const SetPasswordPage(title: 'Reset Password');
+  Widget build(BuildContext context) =>
+      const SetPasswordPage(title: 'Reset Password');
 }
 
 class SetPasswordPage extends ConsumerStatefulWidget {
@@ -518,21 +707,35 @@ class _SetPasswordPageState extends ConsumerState<SetPasswordPage> {
       title: widget.title,
       child: Column(
         children: [
-          TextField(controller: _password, obscureText: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_rounded), hintText: 'New password')),
+          TextField(
+              controller: _password,
+              obscureText: true,
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.lock_rounded),
+                  hintText: 'New password')),
           const SizedBox(height: 12),
-          TextField(controller: _confirm, obscureText: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_outline_rounded), hintText: 'Confirm password')),
+          TextField(
+              controller: _confirm,
+              obscureText: true,
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                  hintText: 'Confirm password')),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _loading
                 ? null
                 : () async {
-                    if (_password.text.length < 8 || _password.text != _confirm.text) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check password and confirmation.')));
+                    if (_password.text.length < 8 ||
+                        _password.text != _confirm.text) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Check password and confirmation.')));
                       return;
                     }
                     setState(() => _loading = true);
                     try {
-                      await ref.read(authRepositoryProvider).updatePassword(_password.text);
+                      await ref
+                          .read(authRepositoryProvider)
+                          .updatePassword(_password.text);
                       if (context.mounted) context.go('/app');
                     } finally {
                       if (mounted) setState(() => _loading = false);
@@ -563,19 +766,30 @@ class _SetLocationPageState extends ConsumerState<SetLocationPage> {
       title: 'Set Location',
       child: Column(
         children: [
-          TextField(controller: _location, decoration: const InputDecoration(prefixIcon: Icon(Icons.location_on_rounded), hintText: 'Area, city or pincode')),
+          TextField(
+              controller: _location,
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.location_on_rounded),
+                  hintText: 'Area, city or pincode')),
           const SizedBox(height: 14),
           OutlinedButton.icon(
             onPressed: _locating ? null : _useLiveLocation,
             icon: _locating
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.my_location_rounded),
-            label: Text(_locating ? 'Picking location...' : 'Use live location'),
+            label:
+                Text(_locating ? 'Picking location...' : 'Use live location'),
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: () async {
-              await ref.read(customerRepositoryProvider).saveSelectedLocation(_location.text.trim().isEmpty ? 'Set your location' : _location.text.trim());
+              await ref.read(customerRepositoryProvider).saveSelectedLocation(
+                  _location.text.trim().isEmpty
+                      ? 'Set your location'
+                      : _location.text.trim());
               ref.invalidate(selectedLocationProvider);
               if (context.mounted) context.go('/app');
             },
@@ -599,14 +813,17 @@ class _SetLocationPageState extends ConsumerState<SetLocationPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         _snack('Location permission is required to pick live location.');
         return;
       }
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
       );
-      final value = 'Live location: ${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      final value =
+          'Live location: ${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
       _location.text = value;
       await ref.read(customerRepositoryProvider).saveSelectedLocation(value);
       ref.invalidate(selectedLocationProvider);
@@ -618,21 +835,24 @@ class _SetLocationPageState extends ConsumerState<SetLocationPage> {
     }
   }
 
-  void _snack(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
 }
 
 class TermsPage extends StatelessWidget {
   const TermsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _TextPolicyPage(title: 'Terms of Service');
+  Widget build(BuildContext context) =>
+      const _TextPolicyPage(title: 'Terms of Service');
 }
 
 class PrivacyPolicyPage extends StatelessWidget {
   const PrivacyPolicyPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _TextPolicyPage(title: 'Privacy Policy');
+  Widget build(BuildContext context) =>
+      const _TextPolicyPage(title: 'Privacy Policy');
 }
 
 class _TextPolicyPage extends StatelessWidget {
@@ -671,7 +891,9 @@ class _SimpleAuthShell extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          Center(child: Image.asset('assets/images/p4u-logo.png', width: 82, height: 82)),
+          Center(
+              child: Image.asset('assets/images/p4u-logo.png',
+                  width: 82, height: 82)),
           const SizedBox(height: 18),
           AppCard(child: child),
         ],
@@ -681,6 +903,21 @@ class _SimpleAuthShell extends StatelessWidget {
 }
 
 String _friendly(Object e) {
+  if (e is ApiException) return e.message;
+  if (e is firebase.FirebaseAuthException) {
+    if (e.code == 'invalid-verification-code') {
+      return 'Incorrect OTP. Please try again.';
+    }
+    if (e.code == 'session-expired' || e.code == 'code-expired') {
+      return 'OTP expired. Please request a new code.';
+    }
+    final message = e.message ?? '';
+    if (e.code == 'app-not-authorized' ||
+        message.toLowerCase().contains('missing a valid app identifier')) {
+      return 'Firebase phone OTP is not authorized for this APK. Add this app package and SHA-1/SHA-256 fingerprints in Firebase Console, download google-services.json, then rebuild.';
+    }
+    return message.isNotEmpty ? message : 'OTP failed. Please try again.';
+  }
   final raw = e.toString();
   return raw
       .replaceFirst('AuthException(message: ', '')

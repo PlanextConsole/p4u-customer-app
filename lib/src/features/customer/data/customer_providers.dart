@@ -16,3 +16,7 @@ final cartSummaryProvider = FutureProvider<CartSummary>((ref) {
 final selectedLocationProvider = FutureProvider<String?>((ref) {
   return ref.watch(customerRepositoryProvider).selectedLocation();
 });
+
+final landingWalletProvider = FutureProvider<Map<String, dynamic>>((ref) {
+  return ref.watch(customerRepositoryProvider).rewardPoints('');
+});

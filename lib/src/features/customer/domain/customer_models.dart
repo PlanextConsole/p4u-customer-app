@@ -114,7 +114,10 @@ class CartItem {
       image: json['image']?.toString(),
       parentItemId: json['parent_item_id']?.toString(),
       variantId: json['variant_id']?.toString(),
-      selectedAttributes: attrs is Map ? attrs.map((key, value) => MapEntry(key.toString(), value.toString())) : null,
+      selectedAttributes: attrs is Map
+          ? attrs
+              .map((key, value) => MapEntry(key.toString(), value.toString()))
+          : null,
       tax: json.n('tax'),
       discount: json.n('discount'),
       maxPoints: json.i('max_points', json.i('maxPoints')),
@@ -143,11 +146,15 @@ class CartSummary {
   int get count => items.fold(0, (sum, item) => sum + item.qty);
 }
 
-String encodeCart(List<CartItem> items) => jsonEncode(items.map((item) => item.toJson()).toList());
+String encodeCart(List<CartItem> items) =>
+    jsonEncode(items.map((item) => item.toJson()).toList());
 
 List<CartItem> decodeCart(String? encoded) {
   if (encoded == null || encoded.isEmpty) return [];
   final value = jsonDecode(encoded);
   if (value is! List) return [];
-  return value.whereType<Map>().map((item) => CartItem.fromJson(Map<String, dynamic>.from(item))).toList();
+  return value
+      .whereType<Map>()
+      .map((item) => CartItem.fromJson(Map<String, dynamic>.from(item)))
+      .toList();
 }

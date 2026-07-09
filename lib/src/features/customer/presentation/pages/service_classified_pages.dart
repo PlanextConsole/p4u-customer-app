@@ -18,7 +18,8 @@ class CustomerServicesPage extends ConsumerStatefulWidget {
   const CustomerServicesPage({super.key});
 
   @override
-  ConsumerState<CustomerServicesPage> createState() => _CustomerServicesPageState();
+  ConsumerState<CustomerServicesPage> createState() =>
+      _CustomerServicesPageState();
 }
 
 class _CustomerServicesPageState extends ConsumerState<CustomerServicesPage> {
@@ -28,11 +29,23 @@ class _CustomerServicesPageState extends ConsumerState<CustomerServicesPage> {
   @override
   void initState() {
     super.initState();
-    _future = ref.read(customerRepositoryProvider).services();
+    _future = Future.value([]);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final query = GoRouterState.of(context).uri.queryParameters['search'];
+    if (query != null && query != _search.text) {
+      _search.text = query;
+    }
+    _load();
   }
 
   void _load() {
-    _future = ref.read(customerRepositoryProvider).services(search: _search.text.trim());
+    _future = ref
+        .read(customerRepositoryProvider)
+        .services(search: _search.text.trim());
   }
 
   @override
@@ -49,16 +62,35 @@ class _CustomerServicesPageState extends ConsumerState<CustomerServicesPage> {
               controller: _search,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => setState(_load),
-              decoration: InputDecoration(hintText: 'Search services', prefixIcon: const Icon(Icons.search_rounded), suffixIcon: IconButton(onPressed: () => setState(_load), icon: const Icon(Icons.arrow_forward_rounded))),
+              decoration: InputDecoration(
+                  hintText: 'Search services',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: IconButton(
+                      onPressed: () => setState(_load),
+                      icon: const Icon(Icons.arrow_forward_rounded))),
             ),
             const SizedBox(height: 14),
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()));
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                      height: 300,
+                      child: Center(child: CircularProgressIndicator()));
+                }
                 final services = snapshot.data ?? [];
-                if (services.isEmpty) return const EmptyState(icon: Icons.home_repair_service_rounded, title: 'No services found', message: 'Try another search.');
-                return Column(children: services.map((service) => Padding(padding: const EdgeInsets.only(bottom: 10), child: ServiceTile(service: service))).toList());
+                if (services.isEmpty) {
+                  return const EmptyState(
+                      icon: Icons.home_repair_service_rounded,
+                      title: 'No services found',
+                      message: 'Try another search.');
+                }
+                return Column(
+                    children: services
+                        .map((service) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: ServiceTile(service: service)))
+                        .toList());
               },
             ),
           ],
@@ -73,10 +105,12 @@ class CustomerServiceDetailPage extends ConsumerStatefulWidget {
   final String id;
 
   @override
-  ConsumerState<CustomerServiceDetailPage> createState() => _CustomerServiceDetailPageState();
+  ConsumerState<CustomerServiceDetailPage> createState() =>
+      _CustomerServiceDetailPageState();
 }
 
-class _CustomerServiceDetailPageState extends ConsumerState<CustomerServiceDetailPage> {
+class _CustomerServiceDetailPageState
+    extends ConsumerState<CustomerServiceDetailPage> {
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   String _slot = '10:00 AM - 12:00 PM';
   final _address = TextEditingController();
@@ -91,19 +125,39 @@ class _CustomerServiceDetailPageState extends ConsumerState<CustomerServiceDetai
       child: FutureBuilder<Map<String, dynamic>?>(
         future: ref.read(customerRepositoryProvider).service(widget.id),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final service = snapshot.data;
-          if (service == null) return const EmptyState(icon: Icons.home_repair_service_rounded, title: 'Service not found', message: 'This service is unavailable.');
+          if (service == null) {
+            return const EmptyState(
+                icon: Icons.home_repair_service_rounded,
+                title: 'Service not found',
+                message: 'This service is unavailable.');
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              RemoteImage(url: service.s('image'), height: 230, width: double.infinity, borderRadius: 18),
+              RemoteImage(
+                  url: service.s('image'),
+                  height: 230,
+                  width: double.infinity,
+                  borderRadius: 18),
               const SizedBox(height: 16),
-              Text(service.s('title'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+              Text(service.s('title'),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
-              Text(service.s('description', service.s('short_description')), style: const TextStyle(color: AppColors.muted)),
+              Text(service.s('description', service.s('short_description')),
+                  style: const TextStyle(color: AppColors.muted)),
               const SizedBox(height: 12),
-              Text(money(service.n('price')), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary, fontSize: 24)),
+              Text(money(service.n('price')),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
+                      fontSize: 24)),
               const SectionHeader(title: 'Book Service'),
               AppCard(
                 child: Column(
@@ -114,31 +168,68 @@ class _CustomerServiceDetailPageState extends ConsumerState<CustomerServiceDetai
                       title: Text(shortDate(_date.toIso8601String())),
                       trailing: const Icon(Icons.edit_calendar_rounded),
                       onTap: () async {
-                        final picked = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 60)), initialDate: _date);
+                        final picked = await showDatePicker(
+                            context: context,
+                            firstDate: DateTime.now(),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 60)),
+                            initialDate: _date);
                         if (picked != null) setState(() => _date = picked);
                       },
                     ),
                     DropdownButtonFormField<String>(
                       initialValue: _slot,
-                      decoration: const InputDecoration(prefixIcon: Icon(Icons.schedule_rounded), hintText: 'Time Slot'),
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.schedule_rounded),
+                          hintText: 'Time Slot'),
                       items: const [
-                        DropdownMenuItem(value: '10:00 AM - 12:00 PM', child: Text('10:00 AM - 12:00 PM')),
-                        DropdownMenuItem(value: '12:00 PM - 02:00 PM', child: Text('12:00 PM - 02:00 PM')),
-                        DropdownMenuItem(value: '03:00 PM - 05:00 PM', child: Text('03:00 PM - 05:00 PM')),
+                        DropdownMenuItem(
+                            value: '10:00 AM - 12:00 PM',
+                            child: Text('10:00 AM - 12:00 PM')),
+                        DropdownMenuItem(
+                            value: '12:00 PM - 02:00 PM',
+                            child: Text('12:00 PM - 02:00 PM')),
+                        DropdownMenuItem(
+                            value: '03:00 PM - 05:00 PM',
+                            child: Text('03:00 PM - 05:00 PM')),
                       ],
-                      onChanged: (value) => setState(() => _slot = value ?? _slot),
+                      onChanged: (value) =>
+                          setState(() => _slot = value ?? _slot),
                     ),
                     const SizedBox(height: 12),
-                    TextField(controller: _address, minLines: 2, maxLines: 3, decoration: const InputDecoration(prefixIcon: Icon(Icons.location_on_rounded), hintText: 'Service address')),
+                    TextField(
+                        controller: _address,
+                        minLines: 2,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.location_on_rounded),
+                            hintText: 'Service address')),
                     const SizedBox(height: 12),
-                    TextField(controller: _notes, decoration: const InputDecoration(prefixIcon: Icon(Icons.notes_rounded), hintText: 'Notes')),
+                    TextField(
+                        controller: _notes,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.notes_rounded),
+                            hintText: 'Notes')),
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: auth == null
                           ? () => context.go('/app/login')
                           : () async {
-                              await ref.read(customerRepositoryProvider).bookService(customerId: auth.id, service: service, date: _date, timeSlot: _slot, address: _address.text.trim(), notes: _notes.text.trim());
-                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service booking created')));
+                              await ref
+                                  .read(customerRepositoryProvider)
+                                  .bookService(
+                                      customerId: auth.id,
+                                      service: service,
+                                      date: _date,
+                                      timeSlot: _slot,
+                                      address: _address.text.trim(),
+                                      notes: _notes.text.trim());
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('Service booking created')));
+                              }
                             },
                       icon: const Icon(Icons.check_circle_rounded),
                       label: Text(auth == null ? 'Login to Book' : 'Book Now'),
@@ -148,11 +239,24 @@ class _CustomerServiceDetailPageState extends ConsumerState<CustomerServiceDetai
               ),
               const SectionHeader(title: 'Reviews'),
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: ref.read(customerRepositoryProvider).serviceReviews(widget.id),
+                future: ref
+                    .read(customerRepositoryProvider)
+                    .serviceReviews(widget.id),
                 builder: (context, reviews) {
                   final rows = reviews.data ?? [];
-                  if (rows.isEmpty) return const Text('No reviews yet.', style: TextStyle(color: AppColors.muted));
-                  return Column(children: rows.map((r) => AppCard(child: ListTile(contentPadding: EdgeInsets.zero, title: Text(r.s('customer_name', 'Customer')), subtitle: Text(r.s('review')), trailing: Text('${r.i('rating')} star')))).toList());
+                  if (rows.isEmpty) {
+                    return const Text('No reviews yet.',
+                        style: TextStyle(color: AppColors.muted));
+                  }
+                  return Column(
+                      children: rows
+                          .map((r) => AppCard(
+                              child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(r.s('customer_name', 'Customer')),
+                                  subtitle: Text(r.s('review')),
+                                  trailing: Text('${r.i('rating')} star'))))
+                          .toList());
                 },
               ),
             ],
@@ -167,10 +271,12 @@ class CustomerClassifiedsPage extends ConsumerStatefulWidget {
   const CustomerClassifiedsPage({super.key});
 
   @override
-  ConsumerState<CustomerClassifiedsPage> createState() => _CustomerClassifiedsPageState();
+  ConsumerState<CustomerClassifiedsPage> createState() =>
+      _CustomerClassifiedsPageState();
 }
 
-class _CustomerClassifiedsPageState extends ConsumerState<CustomerClassifiedsPage> {
+class _CustomerClassifiedsPageState
+    extends ConsumerState<CustomerClassifiedsPage> {
   final _search = TextEditingController();
   late Future<List<Map<String, dynamic>>> _future;
 
@@ -181,7 +287,9 @@ class _CustomerClassifiedsPageState extends ConsumerState<CustomerClassifiedsPag
   }
 
   void _load() {
-    _future = ref.read(customerRepositoryProvider).classifieds(search: _search.text.trim());
+    _future = ref
+        .read(customerRepositoryProvider)
+        .classifieds(search: _search.text.trim());
   }
 
   @override
@@ -190,22 +298,46 @@ class _CustomerClassifiedsPageState extends ConsumerState<CustomerClassifiedsPag
       title: 'Classifieds',
       bottomNavIndex: 5,
       actions: [
-        IconButton(onPressed: () => context.go('/app/classifieds/post'), icon: const Icon(Icons.add_rounded)),
+        IconButton(
+            onPressed: () => context.go('/app/classifieds/post'),
+            icon: const Icon(Icons.add_rounded)),
       ],
       child: RefreshIndicator(
         onRefresh: () async => setState(_load),
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextField(controller: _search, onSubmitted: (_) => setState(_load), decoration: InputDecoration(hintText: 'Search classifieds', prefixIcon: const Icon(Icons.search_rounded), suffixIcon: IconButton(onPressed: () => setState(_load), icon: const Icon(Icons.arrow_forward_rounded)))),
+            TextField(
+                controller: _search,
+                onSubmitted: (_) => setState(_load),
+                decoration: InputDecoration(
+                    hintText: 'Search classifieds',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: IconButton(
+                        onPressed: () => setState(_load),
+                        icon: const Icon(Icons.arrow_forward_rounded)))),
             const SizedBox(height: 14),
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()));
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                      height: 300,
+                      child: Center(child: CircularProgressIndicator()));
+                }
                 final ads = snapshot.data ?? [];
-                if (ads.isEmpty) return const EmptyState(icon: Icons.campaign_rounded, title: 'No ads found', message: 'Post the first classified ad.');
-                return Column(children: ads.map((ad) => Padding(padding: const EdgeInsets.only(bottom: 10), child: ClassifiedTile(ad: ad))).toList());
+                if (ads.isEmpty) {
+                  return const EmptyState(
+                      icon: Icons.campaign_rounded,
+                      title: 'No ads found',
+                      message: 'Post the first classified ad.');
+                }
+                return Column(
+                    children: ads
+                        .map((ad) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: ClassifiedTile(ad: ad)))
+                        .toList());
               },
             ),
           ],
@@ -227,21 +359,43 @@ class CustomerClassifiedDetailPage extends ConsumerWidget {
       child: FutureBuilder<Map<String, dynamic>?>(
         future: ref.read(customerRepositoryProvider).classified(id),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final ad = snapshot.data;
-          if (ad == null) return const EmptyState(icon: Icons.campaign_rounded, title: 'Ad not found', message: 'This ad is unavailable.');
+          if (ad == null) {
+            return const EmptyState(
+                icon: Icons.campaign_rounded,
+                title: 'Ad not found',
+                message: 'This ad is unavailable.');
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              RemoteImage(url: ad.s('image_url', ad.s('image')), height: 240, width: double.infinity, borderRadius: 18),
+              RemoteImage(
+                  url: ad.s('image_url', ad.s('image')),
+                  height: 240,
+                  width: double.infinity,
+                  borderRadius: 18),
               const SizedBox(height: 16),
-              Text(ad.s('title'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+              Text(ad.s('title'),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              Text(ad.n('price') > 0 ? money(ad.n('price')) : ad.s('location'), style: const TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+              Text(ad.n('price') > 0 ? money(ad.n('price')) : ad.s('location'),
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900)),
               const SizedBox(height: 12),
               Text(ad.s('description')),
               const SizedBox(height: 14),
-              FilledButton.icon(onPressed: () {}, icon: const Icon(Icons.call_rounded), label: const Text('Contact Seller')),
+              FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.call_rounded),
+                  label: const Text('Contact Seller')),
             ],
           );
         },
@@ -277,19 +431,45 @@ class _CustomerPostAdPageState extends ConsumerState<CustomerPostAdPage> {
           AppCard(
             child: Column(
               children: [
-                TextField(controller: _title, decoration: const InputDecoration(prefixIcon: Icon(Icons.title_rounded), hintText: 'Title')),
+                TextField(
+                    controller: _title,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.title_rounded),
+                        hintText: 'Title')),
                 const SizedBox(height: 12),
-                TextField(controller: _category, decoration: const InputDecoration(prefixIcon: Icon(Icons.category_rounded), hintText: 'Category')),
+                TextField(
+                    controller: _category,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.category_rounded),
+                        hintText: 'Category')),
                 const SizedBox(height: 12),
-                TextField(controller: _price, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(prefixIcon: Icon(Icons.currency_rupee_rounded), hintText: 'Price')),
+                TextField(
+                    controller: _price,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.currency_rupee_rounded),
+                        hintText: 'Price')),
                 const SizedBox(height: 12),
-                TextField(controller: _location, decoration: const InputDecoration(prefixIcon: Icon(Icons.location_on_rounded), hintText: 'Location')),
+                TextField(
+                    controller: _location,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.location_on_rounded),
+                        hintText: 'Location')),
                 const SizedBox(height: 12),
-                TextField(controller: _description, minLines: 4, maxLines: 6, decoration: const InputDecoration(prefixIcon: Icon(Icons.description_rounded), hintText: 'Description')),
+                TextField(
+                    controller: _description,
+                    minLines: 4,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.description_rounded),
+                        hintText: 'Description')),
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: () async {
-                    await ref.read(customerRepositoryProvider).createClassified(auth.id, {
+                    await ref
+                        .read(customerRepositoryProvider)
+                        .createClassified(auth.id, {
                       'title': _title.text.trim(),
                       'category': _category.text.trim(),
                       'price': num.tryParse(_price.text.trim()) ?? 0,

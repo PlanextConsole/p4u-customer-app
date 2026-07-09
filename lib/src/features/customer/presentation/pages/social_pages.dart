@@ -23,14 +23,22 @@ class SocialFeedPage extends ConsumerWidget {
       title: 'Socio',
       bottomNavIndex: 3,
       actions: [
-        IconButton(onPressed: () => context.go('/app/social/create'), icon: const Icon(Icons.add_box_rounded)),
-        IconButton(onPressed: () => context.go('/app/social/notifications'), icon: const Icon(Icons.notifications_rounded)),
-        IconButton(onPressed: () => context.go('/app/social/messages'), icon: const Icon(Icons.send_rounded)),
+        IconButton(
+            onPressed: () => context.go('/app/social/create'),
+            icon: const Icon(Icons.add_box_rounded)),
+        IconButton(
+            onPressed: () => context.go('/app/social/notifications'),
+            icon: const Icon(Icons.notifications_rounded)),
+        IconButton(
+            onPressed: () => context.go('/app/social/messages'),
+            icon: const Icon(Icons.send_rounded)),
       ],
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: ref.read(customerRepositoryProvider).socialFeed(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final posts = snapshot.data ?? [];
           return RefreshIndicator(
             onRefresh: () async {},
@@ -40,9 +48,14 @@ class SocialFeedPage extends ConsumerWidget {
                 _SocialQuickNav(),
                 const SizedBox(height: 12),
                 if (posts.isEmpty)
-                  const EmptyState(icon: Icons.groups_rounded, title: 'No posts yet', message: 'Create the first Socio post.')
+                  const EmptyState(
+                      icon: Icons.groups_rounded,
+                      title: 'No posts yet',
+                      message: 'Create the first Socio post.')
                 else
-                  ...posts.map((post) => Padding(padding: const EdgeInsets.only(bottom: 12), child: SocialPostCard(post: post))),
+                  ...posts.map((post) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SocialPostCard(post: post))),
               ],
             ),
           );
@@ -58,7 +71,10 @@ class SocialPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final media = post['media_urls'] is List && (post['media_urls'] as List).isNotEmpty ? (post['media_urls'] as List).first.toString() : post.s('image_url');
+    final media =
+        post['media_urls'] is List && (post['media_urls'] as List).isNotEmpty
+            ? (post['media_urls'] as List).first.toString()
+            : post.s('image_url');
     return AppCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -66,27 +82,46 @@ class SocialPostCard extends StatelessWidget {
         children: [
           ListTile(
             onTap: () => context.go('/app/social/profile/${post.s('user_id')}'),
-            leading: const CircleAvatar(backgroundColor: AppColors.accent, child: Icon(Icons.person_rounded, color: AppColors.primary)),
-            title: Text(post.s('username', 'Planext user'), style: const TextStyle(fontWeight: FontWeight.w900)),
+            leading: const CircleAvatar(
+                backgroundColor: AppColors.accent,
+                child: Icon(Icons.person_rounded, color: AppColors.primary)),
+            title: Text(post.s('username', 'Planext user'),
+                style: const TextStyle(fontWeight: FontWeight.w900)),
             subtitle: Text(shortDate(post['created_at'])),
-            trailing: IconButton(onPressed: () => context.go('/app/social/post/${post.s('id')}'), icon: const Icon(Icons.more_horiz_rounded)),
+            trailing: IconButton(
+                onPressed: () => context.go('/app/social/post/${post.s('id')}'),
+                icon: const Icon(Icons.more_horiz_rounded)),
           ),
-          if (media.isNotEmpty) RemoteImage(url: media, height: 280, width: double.infinity, borderRadius: 0),
+          if (media.isNotEmpty)
+            RemoteImage(
+                url: media,
+                height: 280,
+                width: double.infinity,
+                borderRadius: 0),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(post.s('caption', post.s('content')), style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(post.s('caption', post.s('content')),
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.favorite_border_rounded)),
+                    IconButton(
+                        onPressed: () {},
+                        icon: const Icon(Icons.favorite_border_rounded)),
                     Text('${post.i('likes_count', post.i('like_count'))}'),
-                    IconButton(onPressed: () => context.go('/app/social/comments/${post.s('id')}'), icon: const Icon(Icons.mode_comment_outlined)),
-                    Text('${post.i('comments_count', post.i('comment_count'))}'),
+                    IconButton(
+                        onPressed: () =>
+                            context.go('/app/social/comments/${post.s('id')}'),
+                        icon: const Icon(Icons.mode_comment_outlined)),
+                    Text(
+                        '${post.i('comments_count', post.i('comment_count'))}'),
                     const Spacer(),
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.bookmark_border_rounded)),
+                    IconButton(
+                        onPressed: () {},
+                        icon: const Icon(Icons.bookmark_border_rounded)),
                   ],
                 ),
               ],
@@ -102,7 +137,8 @@ class SocialCreatePostPage extends ConsumerStatefulWidget {
   const SocialCreatePostPage({super.key});
 
   @override
-  ConsumerState<SocialCreatePostPage> createState() => _SocialCreatePostPageState();
+  ConsumerState<SocialCreatePostPage> createState() =>
+      _SocialCreatePostPageState();
 }
 
 class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
@@ -122,16 +158,29 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
           AppCard(
             child: Column(
               children: [
-                TextField(controller: _caption, minLines: 4, maxLines: 8, decoration: const InputDecoration(prefixIcon: Icon(Icons.edit_rounded), hintText: 'What do you want to share?')),
+                TextField(
+                    controller: _caption,
+                    minLines: 4,
+                    maxLines: 8,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.edit_rounded),
+                        hintText: 'What do you want to share?')),
                 const SizedBox(height: 12),
-                TextField(controller: _image, decoration: const InputDecoration(prefixIcon: Icon(Icons.image_rounded), hintText: 'Image URL optional')),
+                TextField(
+                    controller: _image,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.image_rounded),
+                        hintText: 'Image URL optional')),
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: () async {
-                    await ref.read(customerRepositoryProvider).createSocialPost(auth.supabaseUid ?? auth.id, {
+                    await ref
+                        .read(customerRepositoryProvider)
+                        .createSocialPost(auth.supabaseUid ?? auth.id, {
                       'caption': _caption.text.trim(),
                       'content': _caption.text.trim(),
-                      if (_image.text.trim().isNotEmpty) 'image_url': _image.text.trim(),
+                      if (_image.text.trim().isNotEmpty)
+                        'image_url': _image.text.trim(),
                     });
                     if (context.mounted) context.go('/app/social');
                   },
@@ -174,16 +223,33 @@ class _SocialExplorePageState extends ConsumerState<SocialExplorePage> {
         children: [
           TextField(
             controller: _search,
-            onSubmitted: (_) => setState(() => _future = ref.read(customerRepositoryProvider).socialProfiles(search: _search.text.trim())),
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search people or hashtags'),
+            onSubmitted: (_) => setState(() => _future = ref
+                .read(customerRepositoryProvider)
+                .socialProfiles(search: _search.text.trim())),
+            decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                hintText: 'Search people or hashtags'),
           ),
           const SizedBox(height: 14),
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _future,
             builder: (context, snapshot) {
               final rows = snapshot.data ?? [];
-              if (rows.isEmpty) return const EmptyState(icon: Icons.search_rounded, title: 'Start exploring', message: 'Find people and creators.');
-              return Column(children: rows.map((u) => Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(onTap: () => context.go('/app/social/profile/${u.s('user_id')}'), child: _ProfileRow(profile: u)))).toList());
+              if (rows.isEmpty) {
+                return const EmptyState(
+                    icon: Icons.search_rounded,
+                    title: 'Start exploring',
+                    message: 'Find people and creators.');
+              }
+              return Column(
+                  children: rows
+                      .map((u) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: AppCard(
+                              onTap: () => context
+                                  .go('/app/social/profile/${u.s('user_id')}'),
+                              child: _ProfileRow(profile: u))))
+                      .toList());
             },
           ),
         ],
@@ -206,32 +272,67 @@ class SocialProfilePage extends ConsumerWidget {
     return CustomerScaffold(
       title: 'Socio Profile',
       showBack: true,
-      actions: [IconButton(onPressed: () => context.go('/app/social/settings'), icon: const Icon(Icons.settings_rounded))],
+      actions: [
+        IconButton(
+            onPressed: () => context.go('/app/social/settings'),
+            icon: const Icon(Icons.settings_rounded))
+      ],
       child: FutureBuilder<Map<String, dynamic>?>(
         future: ref.read(customerRepositoryProvider).socialProfile(target),
         builder: (context, snapshot) {
-          final profile = snapshot.data ?? {'user_id': target, 'username': username ?? auth.name, 'display_name': auth.name};
+          final profile = snapshot.data ??
+              {
+                'user_id': target,
+                'username': username ?? auth.name,
+                'display_name': auth.name
+              };
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               AppCard(
                 child: Column(
                   children: [
-                    CircleAvatar(radius: 42, backgroundColor: AppColors.accent, child: Text(profile.s('display_name', auth.name).characters.first.toUpperCase(), style: const TextStyle(fontSize: 30, color: AppColors.primary, fontWeight: FontWeight.w900))),
+                    CircleAvatar(
+                        radius: 42,
+                        backgroundColor: AppColors.accent,
+                        child: Text(
+                            profile
+                                .s('display_name', auth.name)
+                                .characters
+                                .first
+                                .toUpperCase(),
+                            style: const TextStyle(
+                                fontSize: 30,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w900))),
                     const SizedBox(height: 10),
-                    Text(profile.s('display_name', auth.name), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
-                    Text('@${profile.s('username', auth.name.toLowerCase().replaceAll(' ', ''))}', style: const TextStyle(color: AppColors.muted)),
+                    Text(profile.s('display_name', auth.name),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 20)),
+                    Text(
+                        '@${profile.s('username', auth.name.toLowerCase().replaceAll(' ', ''))}',
+                        style: const TextStyle(color: AppColors.muted)),
                     const SizedBox(height: 12),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                      _Count('Posts', profile.i('posts_count')),
-                      _Count('Followers', profile.i('followers_count')),
-                      _Count('Following', profile.i('following_count')),
-                    ]),
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _Count('Posts', profile.i('posts_count')),
+                          _Count('Followers', profile.i('followers_count')),
+                          _Count('Following', profile.i('following_count')),
+                        ]),
                     const SizedBox(height: 12),
                     Row(children: [
-                      Expanded(child: OutlinedButton(onPressed: () => context.go('/app/social/edit-profile'), child: const Text('Edit Profile'))),
+                      Expanded(
+                          child: OutlinedButton(
+                              onPressed: () =>
+                                  context.go('/app/social/edit-profile'),
+                              child: const Text('Edit Profile'))),
                       const SizedBox(width: 10),
-                      Expanded(child: FilledButton(onPressed: () => context.go('/app/social/messages/$target'), child: const Text('Message'))),
+                      Expanded(
+                          child: FilledButton(
+                              onPressed: () =>
+                                  context.go('/app/social/messages/$target'),
+                              child: const Text('Message'))),
                     ]),
                   ],
                 ),
@@ -240,9 +341,21 @@ class SocialProfilePage extends ConsumerWidget {
               FutureBuilder<List<Map<String, dynamic>>>(
                 future: ref.read(customerRepositoryProvider).socialFeed(),
                 builder: (context, posts) {
-                  final rows = (posts.data ?? []).where((p) => p.s('user_id') == target).toList();
-                  if (rows.isEmpty) return const EmptyState(icon: Icons.grid_on_rounded, title: 'No posts', message: 'Posts from this profile will appear here.');
-                  return Column(children: rows.map((post) => Padding(padding: const EdgeInsets.only(bottom: 10), child: SocialPostCard(post: post))).toList());
+                  final rows = (posts.data ?? [])
+                      .where((p) => p.s('user_id') == target)
+                      .toList();
+                  if (rows.isEmpty) {
+                    return const EmptyState(
+                        icon: Icons.grid_on_rounded,
+                        title: 'No posts',
+                        message: 'Posts from this profile will appear here.');
+                  }
+                  return Column(
+                      children: rows
+                          .map((post) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: SocialPostCard(post: post)))
+                          .toList());
                 },
               ),
             ],
@@ -265,10 +378,23 @@ class SocialPostDetailPage extends ConsumerWidget {
       child: FutureBuilder<Map<String, dynamic>?>(
         future: ref.read(customerRepositoryProvider).socialPost(postId),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final post = snapshot.data;
-          if (post == null) return const EmptyState(icon: Icons.post_add_rounded, title: 'Post not found', message: 'This post is unavailable.');
-          return ListView(padding: const EdgeInsets.all(16), children: [SocialPostCard(post: post), const SizedBox(height: 12), FilledButton(onPressed: () => context.go('/app/social/comments/$postId'), child: const Text('View Comments'))]);
+          if (post == null) {
+            return const EmptyState(
+                icon: Icons.post_add_rounded,
+                title: 'Post not found',
+                message: 'This post is unavailable.');
+          }
+          return ListView(padding: const EdgeInsets.all(16), children: [
+            SocialPostCard(post: post),
+            const SizedBox(height: 12),
+            FilledButton(
+                onPressed: () => context.go('/app/social/comments/$postId'),
+                child: const Text('View Comments'))
+          ]);
         },
       ),
     );
@@ -288,8 +414,20 @@ class SocialCommentsPage extends ConsumerWidget {
         future: ref.read(customerRepositoryProvider).socialComments(postId),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
-          if (rows.isEmpty) return const EmptyState(icon: Icons.mode_comment_rounded, title: 'No comments', message: 'Comments will appear here.');
-          return ListView(padding: const EdgeInsets.all(16), children: rows.map((c) => Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(child: Text(c.s('content', c.s('comment')))))).toList());
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.mode_comment_rounded,
+                title: 'No comments',
+                message: 'Comments will appear here.');
+          }
+          return ListView(
+              padding: const EdgeInsets.all(16),
+              children: rows
+                  .map((c) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child:
+                          AppCard(child: Text(c.s('content', c.s('comment'))))))
+                  .toList());
         },
       ),
     );
@@ -308,11 +446,28 @@ class SocialDMPage extends ConsumerWidget {
       title: 'Messages',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).socialConversations(userId),
+        future:
+            ref.read(customerRepositoryProvider).socialConversations(userId),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
-          if (rows.isEmpty) return const EmptyState(icon: Icons.send_rounded, title: 'No conversations', message: 'Start a conversation from a profile.');
-          return ListView(padding: const EdgeInsets.all(16), children: rows.map((c) => AppCard(onTap: () => context.go('/app/social/messages/${c.s('id')}'), child: ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.chat_rounded), title: Text(c.s('title', 'Conversation')), subtitle: Text(shortDate(c['updated_at']))))).toList());
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.send_rounded,
+                title: 'No conversations',
+                message: 'Start a conversation from a profile.');
+          }
+          return ListView(
+              padding: const EdgeInsets.all(16),
+              children: rows
+                  .map((c) => AppCard(
+                      onTap: () =>
+                          context.go('/app/social/messages/${c.s('id')}'),
+                      child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.chat_rounded),
+                          title: Text(c.s('title', 'Conversation')),
+                          subtitle: Text(shortDate(c['updated_at'])))))
+                  .toList());
         },
       ),
     );
@@ -333,11 +488,25 @@ class SocioDMChatPage extends ConsumerWidget {
         children: [
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: ref.read(customerRepositoryProvider).socialMessages(recipientId),
+              future: ref
+                  .read(customerRepositoryProvider)
+                  .socialMessages(recipientId),
               builder: (context, snapshot) {
                 final rows = snapshot.data ?? [];
-                if (rows.isEmpty) return const EmptyState(icon: Icons.chat_bubble_rounded, title: 'No messages', message: 'Send the first message.');
-                return ListView(padding: const EdgeInsets.all(16), children: rows.map((m) => Align(alignment: Alignment.centerLeft, child: AppCard(child: Text(m.s('content', m.s('message')))))).toList());
+                if (rows.isEmpty) {
+                  return const EmptyState(
+                      icon: Icons.chat_bubble_rounded,
+                      title: 'No messages',
+                      message: 'Send the first message.');
+                }
+                return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: rows
+                        .map((m) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: AppCard(
+                                child: Text(m.s('content', m.s('message'))))))
+                        .toList());
               },
             ),
           ),
@@ -346,9 +515,15 @@ class SocioDMChatPage extends ConsumerWidget {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'Message'))),
+                  Expanded(
+                      child: TextField(
+                          controller: controller,
+                          decoration:
+                              const InputDecoration(hintText: 'Message'))),
                   const SizedBox(width: 8),
-                  IconButton.filled(onPressed: () => controller.clear(), icon: const Icon(Icons.send_rounded)),
+                  IconButton.filled(
+                      onPressed: () => controller.clear(),
+                      icon: const Icon(Icons.send_rounded)),
                 ],
               ),
             ),
@@ -370,11 +545,29 @@ class SocialNotificationsPage extends ConsumerWidget {
       title: 'Notifications',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).socialNotifications(auth.supabaseUid ?? auth.id),
+        future: ref
+            .read(customerRepositoryProvider)
+            .socialNotifications(auth.supabaseUid ?? auth.id),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
-          if (rows.isEmpty) return const EmptyState(icon: Icons.notifications_rounded, title: 'No notifications', message: 'Social notifications will appear here.');
-          return ListView(padding: const EdgeInsets.all(16), children: rows.map((n) => Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(child: ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.notifications_rounded), title: Text(n.s('message', n.s('type'))), subtitle: Text(shortDate(n['created_at'])))))).toList());
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.notifications_rounded,
+                title: 'No notifications',
+                message: 'Social notifications will appear here.');
+          }
+          return ListView(
+              padding: const EdgeInsets.all(16),
+              children: rows
+                  .map((n) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppCard(
+                          child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.notifications_rounded),
+                              title: Text(n.s('message', n.s('type'))),
+                              subtitle: Text(shortDate(n['created_at']))))))
+                  .toList());
         },
       ),
     );
@@ -385,7 +578,10 @@ class SocialReelsPage extends StatelessWidget {
   const SocialReelsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Reels', icon: Icons.movie_rounded, message: 'Short video reels from Socio creators.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Reels',
+      icon: Icons.movie_rounded,
+      message: 'Short video reels from Socio creators.');
 }
 
 class SocialStoryViewerPage extends StatelessWidget {
@@ -393,51 +589,72 @@ class SocialStoryViewerPage extends StatelessWidget {
   final String userId;
 
   @override
-  Widget build(BuildContext context) => _SocialPlaceholder(title: 'Stories', icon: Icons.auto_stories_rounded, message: 'Stories for $userId.');
+  Widget build(BuildContext context) => _SocialPlaceholder(
+      title: 'Stories',
+      icon: Icons.auto_stories_rounded,
+      message: 'Stories for $userId.');
 }
 
 class SocialFollowersPage extends StatelessWidget {
-  const SocialFollowersPage({required this.userId, this.following = false, super.key});
+  const SocialFollowersPage(
+      {required this.userId, this.following = false, super.key});
   final String userId;
   final bool following;
 
   @override
-  Widget build(BuildContext context) => _SocialPlaceholder(title: following ? 'Following' : 'Followers', icon: Icons.people_rounded, message: 'Social connections for $userId.');
+  Widget build(BuildContext context) => _SocialPlaceholder(
+      title: following ? 'Following' : 'Followers',
+      icon: Icons.people_rounded,
+      message: 'Social connections for $userId.');
 }
 
 class SocialEditProfilePage extends StatelessWidget {
   const SocialEditProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialSettingsForm(title: 'Edit Social Profile', fields: ['Display name', 'Username', 'Bio']);
+  Widget build(BuildContext context) => const _SocialSettingsForm(
+      title: 'Edit Social Profile',
+      fields: ['Display name', 'Username', 'Bio']);
 }
 
 class SocialCreatorDashboardPage extends StatelessWidget {
   const SocialCreatorDashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Creator Dashboard', icon: Icons.dashboard_rounded, message: 'Creator stats, post performance, and monetization tools.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Creator Dashboard',
+      icon: Icons.dashboard_rounded,
+      message: 'Creator stats, post performance, and monetization tools.');
 }
 
 class SocialLivePage extends StatelessWidget {
   const SocialLivePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Live', icon: Icons.live_tv_rounded, message: 'Go live and interact with followers.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Live',
+      icon: Icons.live_tv_rounded,
+      message: 'Go live and interact with followers.');
 }
 
 class SocialBroadcastPage extends StatelessWidget {
   const SocialBroadcastPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Broadcast Channels', icon: Icons.campaign_rounded, message: 'Create and manage broadcast updates.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Broadcast Channels',
+      icon: Icons.campaign_rounded,
+      message: 'Create and manage broadcast updates.');
 }
 
 class SocialShopPage extends StatelessWidget {
   const SocialShopPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Social Shop', icon: Icons.shopping_bag_rounded, message: 'Tag products and shop from creator posts.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Social Shop',
+      icon: Icons.shopping_bag_rounded,
+      message: 'Tag products and shop from creator posts.');
 }
 
 class SocialSettingsPage extends StatelessWidget {
@@ -451,14 +668,20 @@ class SocialSettingsPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _SettingsTile('Edit Profile', Icons.person_rounded, '/app/social/edit-profile'),
-          _SettingsTile('Change Password', Icons.lock_rounded, '/app/social/change-password'),
-          _SettingsTile('Notifications', Icons.notifications_rounded, '/app/social/notification-settings'),
-          _SettingsTile('Privacy', Icons.privacy_tip_rounded, '/app/social/privacy'),
-          _SettingsTile('Security', Icons.security_rounded, '/app/social/security'),
+          _SettingsTile(
+              'Edit Profile', Icons.person_rounded, '/app/social/edit-profile'),
+          _SettingsTile('Change Password', Icons.lock_rounded,
+              '/app/social/change-password'),
+          _SettingsTile('Notifications', Icons.notifications_rounded,
+              '/app/social/notification-settings'),
+          _SettingsTile(
+              'Privacy', Icons.privacy_tip_rounded, '/app/social/privacy'),
+          _SettingsTile(
+              'Security', Icons.security_rounded, '/app/social/security'),
           _SettingsTile('Help Center', Icons.help_rounded, '/app/social/help'),
           _SettingsTile('Friends', Icons.people_rounded, '/app/social/friends'),
-          _SettingsTile('Suggestions', Icons.person_add_alt_rounded, '/app/social/suggestions'),
+          _SettingsTile('Suggestions', Icons.person_add_alt_rounded,
+              '/app/social/suggestions'),
         ],
       ),
     );
@@ -469,35 +692,48 @@ class SocialChangePasswordPage extends StatelessWidget {
   const SocialChangePasswordPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialSettingsForm(title: 'Social Password', fields: ['New password', 'Confirm password']);
+  Widget build(BuildContext context) => const _SocialSettingsForm(
+      title: 'Social Password', fields: ['New password', 'Confirm password']);
 }
 
 class SocialPrivacyPage extends StatelessWidget {
   const SocialPrivacyPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Privacy', icon: Icons.privacy_tip_rounded, message: 'Manage profile visibility, mentions, tags and blocking.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Privacy',
+      icon: Icons.privacy_tip_rounded,
+      message: 'Manage profile visibility, mentions, tags and blocking.');
 }
 
 class SocialSecurityPage extends StatelessWidget {
   const SocialSecurityPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Security', icon: Icons.security_rounded, message: 'Review login sessions, password settings and account safety.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Security',
+      icon: Icons.security_rounded,
+      message: 'Review login sessions, password settings and account safety.');
 }
 
 class SocialNotificationSettingsPage extends StatelessWidget {
   const SocialNotificationSettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Notification Settings', icon: Icons.notifications_active_rounded, message: 'Choose which Socio alerts you want to receive.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Notification Settings',
+      icon: Icons.notifications_active_rounded,
+      message: 'Choose which Socio alerts you want to receive.');
 }
 
 class SocialHelpCenterPage extends StatelessWidget {
   const SocialHelpCenterPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Help Center', icon: Icons.help_center_rounded, message: 'Find social safety, reporting and creator help.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Help Center',
+      icon: Icons.help_center_rounded,
+      message: 'Find social safety, reporting and creator help.');
 }
 
 class SocialSuggestionsPage extends ConsumerWidget {
@@ -512,8 +748,19 @@ class SocialSuggestionsPage extends ConsumerWidget {
         future: ref.read(customerRepositoryProvider).socialProfiles(),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
-          if (rows.isEmpty) return const EmptyState(icon: Icons.person_add_alt_rounded, title: 'No suggestions', message: 'Suggested people will appear here.');
-          return ListView(padding: const EdgeInsets.all(16), children: rows.map((u) => Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(child: _ProfileRow(profile: u)))).toList());
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.person_add_alt_rounded,
+                title: 'No suggestions',
+                message: 'Suggested people will appear here.');
+          }
+          return ListView(
+              padding: const EdgeInsets.all(16),
+              children: rows
+                  .map((u) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppCard(child: _ProfileRow(profile: u))))
+                  .toList());
         },
       ),
     );
@@ -524,11 +771,15 @@ class SocialFriendsPage extends StatelessWidget {
   const SocialFriendsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(title: 'Friends', icon: Icons.people_alt_rounded, message: 'Your friends and close connections.');
+  Widget build(BuildContext context) => const _SocialPlaceholder(
+      title: 'Friends',
+      icon: Icons.people_alt_rounded,
+      message: 'Your friends and close connections.');
 }
 
 class SocialUserPostsPage extends ConsumerWidget {
-  const SocialUserPostsPage({required this.userId, required this.postId, super.key});
+  const SocialUserPostsPage(
+      {required this.userId, required this.postId, super.key});
   final String userId;
   final String postId;
 
@@ -540,9 +791,22 @@ class SocialUserPostsPage extends ConsumerWidget {
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: ref.read(customerRepositoryProvider).socialFeed(),
         builder: (context, snapshot) {
-          final rows = (snapshot.data ?? []).where((p) => p.s('user_id') == userId).toList();
-          if (rows.isEmpty) return const EmptyState(icon: Icons.grid_on_rounded, title: 'No posts', message: 'User posts will appear here.');
-          return ListView(padding: const EdgeInsets.all(16), children: rows.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10), child: SocialPostCard(post: p))).toList());
+          final rows = (snapshot.data ?? [])
+              .where((p) => p.s('user_id') == userId)
+              .toList();
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.grid_on_rounded,
+                title: 'No posts',
+                message: 'User posts will appear here.');
+          }
+          return ListView(
+              padding: const EdgeInsets.all(16),
+              children: rows
+                  .map((p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: SocialPostCard(post: p)))
+                  .toList());
         },
       ),
     );
@@ -569,7 +833,17 @@ class _SocialQuickNav extends StatelessWidget {
           final item = items[index];
           return AppCard(
             onTap: () => context.go(item.$3),
-            child: SizedBox(width: 82, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(item.$2, color: AppColors.primary), const SizedBox(height: 4), Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))])),
+            child: SizedBox(
+                width: 82,
+                child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(item.$2, color: AppColors.primary),
+                      const SizedBox(height: 4),
+                      Text(item.$1,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 12))
+                    ])),
           );
         },
       ),
@@ -585,12 +859,17 @@ class _ProfileRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const CircleAvatar(backgroundColor: AppColors.accent, child: Icon(Icons.person_rounded, color: AppColors.primary)),
+        const CircleAvatar(
+            backgroundColor: AppColors.accent,
+            child: Icon(Icons.person_rounded, color: AppColors.primary)),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(profile.s('display_name', profile.s('username', 'User')), style: const TextStyle(fontWeight: FontWeight.w900)),
-            Text('@${profile.s('username')}', style: const TextStyle(color: AppColors.muted)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(profile.s('display_name', profile.s('username', 'User')),
+                style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text('@${profile.s('username')}',
+                style: const TextStyle(color: AppColors.muted)),
           ]),
         ),
         OutlinedButton(onPressed: () {}, child: const Text('Follow')),
@@ -605,7 +884,12 @@ class _Count extends StatelessWidget {
   final int value;
 
   @override
-  Widget build(BuildContext context) => Column(children: [Text('$value', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)), Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 12))]);
+  Widget build(BuildContext context) => Column(children: [
+        Text('$value',
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+        Text(label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12))
+      ]);
 }
 
 class _SettingsTile extends StatelessWidget {
@@ -617,7 +901,16 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: AppCard(onTap: () => context.go(route), child: Row(children: [Icon(icon, color: AppColors.primary), const SizedBox(width: 12), Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800))), const Icon(Icons.chevron_right_rounded)])),
+        child: AppCard(
+            onTap: () => context.go(route),
+            child: Row(children: [
+              Icon(icon, color: AppColors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(label,
+                      style: const TextStyle(fontWeight: FontWeight.w800))),
+              const Icon(Icons.chevron_right_rounded)
+            ])),
       );
 }
 
@@ -638,10 +931,15 @@ class _SocialSettingsForm extends StatelessWidget {
             child: Column(
               children: [
                 for (final field in fields) ...[
-                  TextField(obscureText: field.toLowerCase().contains('password'), decoration: InputDecoration(hintText: field)),
+                  TextField(
+                      obscureText: field.toLowerCase().contains('password'),
+                      decoration: InputDecoration(hintText: field)),
                   const SizedBox(height: 12),
                 ],
-                FilledButton(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved'))), child: const Text('Save')),
+                FilledButton(
+                    onPressed: () => ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('Saved'))),
+                    child: const Text('Save')),
               ],
             ),
           ),
@@ -652,7 +950,8 @@ class _SocialSettingsForm extends StatelessWidget {
 }
 
 class _SocialPlaceholder extends StatelessWidget {
-  const _SocialPlaceholder({required this.title, required this.icon, required this.message});
+  const _SocialPlaceholder(
+      {required this.title, required this.icon, required this.message});
   final String title;
   final IconData icon;
   final String message;
