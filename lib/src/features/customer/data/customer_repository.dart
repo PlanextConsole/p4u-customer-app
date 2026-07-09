@@ -185,21 +185,40 @@ class CustomerRepository {
       ...customer,
       'total_orders': orderCount.length,
       'saved_addresses': addresses.length,
-      if (reward['points'] != null) 'wallet_points': reward['points'],
+      'wallet_points':
+          reward['displayAmount'] ?? reward['balance'] ?? reward['points'] ?? 0,
     };
   }
 
   Future<void> updateProfile(
       String customerId, Map<String, dynamic> data) async {
+    final metadata = <String, dynamic>{};
+    if (data['avatar'] != null ||
+        data['avatar_url'] != null ||
+        data['avatarUrl'] != null) {
+      metadata['avatarUrl'] =
+          data['avatar'] ?? data['avatar_url'] ?? data['avatarUrl'];
+      metadata['avatar'] =
+          data['avatar'] ?? data['avatar_url'] ?? data['avatarUrl'];
+    }
+    if (data['bio'] != null) metadata['bio'] = data['bio'];
+    if (data['occupation'] != null) metadata['occupation'] = data['occupation'];
+    if (data['kycDocuments'] != null) {
+      metadata['kycDocuments'] = data['kycDocuments'];
+    }
     final payload = {
       if (data['name'] != null) 'fullName': data['name'],
       if (data['fullName'] != null) 'fullName': data['fullName'],
       if (data['email'] != null) 'email': data['email'],
-      if (data['avatar_url'] != null) 'avatarUrl': data['avatar_url'],
-      if (data['avatarUrl'] != null) 'avatarUrl': data['avatarUrl'],
-      'metadata': data,
+      if (data['phone'] != null) 'phone': data['phone'],
+      if (data['mobile'] != null) 'phone': data['mobile'],
+      if (data['dob'] != null) 'dob': data['dob'],
+      if (data['gender'] != null) 'gender': data['gender'],
+      if (data['occupationId'] != null) 'occupationId': data['occupationId'],
+      if (metadata.isNotEmpty) 'metadata': metadata,
     };
-    await _gateway.updateMyProfile(payload);
+    final updated = await _gateway.updateMyProfile(payload);
+    await apiSession.saveProfile(apiObject(updated) ?? updated);
   }
 
   Future<List<Map<String, dynamic>>> customerAddresses(
@@ -228,17 +247,22 @@ class CustomerRepository {
       String customerId) async {
     if (!await apiSession.hasToken()) return [];
     final data = await _gateway.walletSummary();
-    return apiItems(data['transactions'] ?? data['items'] ?? data);
+    return apiItems(data['recentTransactions'] ??
+        data['transactions'] ??
+        data['items'] ??
+        data);
   }
 
   Future<List<Map<String, dynamic>>> referrals(String customerId) async {
     if (!await apiSession.hasToken()) return [];
-    return apiItems(await _gateway.referralInfo());
+    final data = await _gateway.referralInfo();
+    return apiItems(data['referrals'] ?? data['items'] ?? data);
   }
 
   Future<Map<String, dynamic>> rewardPoints(String customerId) async {
     if (!await apiSession.hasToken()) return {};
-    return _gateway.rewardPoints();
+    final data = await _gateway.rewardPoints();
+    return {...data, 'points': data['balance'] ?? data['points'] ?? 0};
   }
 
   Future<List<Map<String, dynamic>>> kycDocuments(String customerId) async {
@@ -894,19 +918,32 @@ class CustomerRepository {
   Map<String, dynamic> _normalizeAddress(Map<String, dynamic> row) => {
         ...row,
         'id': row.s('id', row.s('addressId')),
-        'name': row.s('name', row.s('label')),
+        'label': row.s('label', row.s('name', 'Home')),
+        'name': row.s('fullName', row.s('name', row.s('label'))),
+        'fullName': row.s('fullName', row.s('name')),
         'mobile': row.s('mobile', row.s('phone')),
-        'address_line': row.s('address_line', row.s('line1')),
+        'phone': row.s('phone', row.s('mobile')),
+        'address_line':
+            row.s('address_line', row.s('line1', row.s('addressLine1'))),
+        'line1': row.s('line1', row.s('addressLine1', row.s('address_line'))),
+        'line2': row.s('line2', row.s('addressLine2')),
+        'city': row.s('city'),
+        'state': row.s('state'),
+        'pincode': row.s('pincode', row.s('postalCode')),
+        'country': row.s('country', 'India'),
         'is_default': row['is_default'] ?? row['isDefault'] ?? false,
       };
 
   Map<String, dynamic> _addressPayload(Map<String, dynamic> address) => {
         'label': address.s('label', address.s('name', 'Home')),
-        'line1': address.s('line1', address.s('address_line')),
-        'line2': address.s('line2'),
+        'fullName': address.s('fullName', address.s('name', 'Customer')),
+        'phone': address.s('phone', address.s('mobile')),
+        'addressLine1': address.s('line1', address.s('address_line')),
+        'addressLine2': address.s('line2'),
         'city': address.s('city'),
         'state': address.s('state'),
-        'pincode': address.s('pincode'),
+        'postalCode': address.s('pincode', address.s('postalCode')),
+        'country': address.s('country', 'India'),
         'latitude': address['latitude'],
         'longitude': address['longitude'],
         'isDefault': address['is_default'] ?? address['isDefault'] ?? false,

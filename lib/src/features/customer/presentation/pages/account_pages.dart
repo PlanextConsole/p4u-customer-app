@@ -67,12 +67,16 @@ class CustomerProfilePage extends ConsumerWidget {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(profile.s('name', auth.name),
+                            Text(
+                                profile.s(
+                                    'name', profile.s('fullName', auth.name)),
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900, fontSize: 19)),
                             Text(profile.s('email', auth.email),
                                 style: const TextStyle(color: AppColors.muted)),
-                            Text(profile.s('mobile', auth.mobile),
+                            Text(
+                                profile.s(
+                                    'mobile', profile.s('phone', auth.mobile)),
                                 style: const TextStyle(color: AppColors.muted)),
                           ]),
                     ),
@@ -141,10 +145,34 @@ class _CustomerProfileEditPageState
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _mobile = TextEditingController();
-  final _address = TextEditingController();
+  final _label = TextEditingController(text: 'Home');
+  final _recipient = TextEditingController();
+  final _addressPhone = TextEditingController();
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
   final _city = TextEditingController();
+  final _state = TextEditingController();
   final _pincode = TextEditingController();
-  bool _loading = false;
+  bool _profileLoading = false;
+  bool _addressLoading = false;
+  bool _isDefaultAddress = false;
+  bool _initialized = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _mobile.dispose();
+    _label.dispose();
+    _recipient.dispose();
+    _addressPhone.dispose();
+    _line1.dispose();
+    _line2.dispose();
+    _city.dispose();
+    _state.dispose();
+    _pincode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -157,64 +185,61 @@ class _CustomerProfileEditPageState
         future: ref.read(customerRepositoryProvider).profile(auth.id),
         builder: (context, snapshot) {
           final profile = snapshot.data;
-          if (profile != null && _name.text.isEmpty) {
-            _name.text = profile.s('name', auth.name);
+          if (profile != null && !_initialized) {
+            _initialized = true;
+            _name.text = profile.s('name', profile.s('fullName', auth.name));
             _email.text = profile.s('email', auth.email);
             _mobile.text =
-                profile.s('mobile', auth.mobile).replaceFirst('+91', '');
+                _digits(profile.s('phone', profile.s('mobile', auth.mobile)));
+            _recipient.text = _name.text;
+            _addressPhone.text = _mobile.text;
           }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               AppCard(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
                         controller: _name,
+                        textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.person_rounded),
-                            hintText: 'Name')),
+                            labelText: 'Full Name *',
+                            hintText: 'Enter your name')),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _email,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.mail_rounded),
-                            hintText: 'Email')),
+                            labelText: 'Email *',
+                            hintText: 'your@email.com')),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _mobile,
+                        keyboardType: TextInputType.phone,
                         maxLength: 10,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly
                         ],
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.phone_rounded),
-                            prefixText: '+91 ',
-                            hintText: 'Mobile',
+                            labelText: 'Mobile *',
+                            hintText: '10-digit number',
                             counterText: '')),
                     const SizedBox(height: 14),
-                    FilledButton.icon(
-                      onPressed: _loading
-                          ? null
-                          : () async {
-                              setState(() => _loading = true);
-                              await ref
-                                  .read(customerRepositoryProvider)
-                                  .updateProfile(auth.id, {
-                                'name': _name.text.trim(),
-                                'email': _email.text.trim(),
-                                'mobile': '+91${_mobile.text.trim()}',
-                              });
-                              ref.invalidate(customerAuthStateProvider);
-                              if (mounted) setState(() => _loading = false);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('Profile updated')));
-                              }
-                            },
-                      icon: const Icon(Icons.save_rounded),
-                      label: Text(_loading ? 'Saving...' : 'Save Profile'),
+                    Align(
+                      alignment: Alignment.center,
+                      child: FilledButton.icon(
+                        onPressed: _profileLoading
+                            ? null
+                            : () => _saveProfile(auth.id),
+                        icon: const Icon(Icons.save_rounded),
+                        label: Text(
+                            _profileLoading ? 'Saving...' : 'Save Profile'),
+                      ),
                     ),
                   ],
                 ),
@@ -226,6 +251,22 @@ class _CustomerProfileEditPageState
                     .customerAddresses(auth.id),
                 builder: (context, snapshot) {
                   final addresses = snapshot.data ?? [];
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (addresses.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: EmptyState(
+                        icon: Icons.location_off_rounded,
+                        title: 'No saved addresses',
+                        message: 'Add one for faster checkout.',
+                      ),
+                    );
+                  }
                   return Column(
                     children: [
                       for (final address in addresses)
@@ -233,15 +274,61 @@ class _CustomerProfileEditPageState
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Icon(Icons.location_on_rounded,
                                     color: AppColors.primary),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                    child: Text(address.s(
-                                        'address_line', address.s('address')))),
-                                if (address.b('is_default'))
-                                  const StatusBadge('default'),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              address.s('label', 'Home'),
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w900),
+                                            ),
+                                          ),
+                                          if (address.b('is_default'))
+                                            const StatusBadge('default'),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [
+                                          address.s('address_line'),
+                                          address.s('line2'),
+                                          address.s('city'),
+                                          address.s('state'),
+                                          address.s('pincode'),
+                                        ]
+                                            .where((v) => v.trim().isNotEmpty)
+                                            .join(', '),
+                                        style: const TextStyle(
+                                            color: AppColors.muted),
+                                      ),
+                                      if (address.s('name').isNotEmpty ||
+                                          address.s('mobile').isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          [
+                                            address.s('name'),
+                                            address.s('mobile')
+                                          ]
+                                              .where((v) => v.trim().isNotEmpty)
+                                              .join(' - '),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppColors.muted),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -252,52 +339,97 @@ class _CustomerProfileEditPageState
               ),
               AppCard(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
-                        controller: _address,
+                        controller: _label,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.label_rounded),
+                            labelText: 'Address label',
+                            hintText: 'Home, Office')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _recipient,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.person_pin_rounded),
+                            labelText: 'Recipient full name *')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _addressPhone,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 10,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.phone_rounded),
+                            labelText: 'Mobile number *',
+                            counterText: '')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _line1,
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.home_rounded),
-                            hintText: 'Address line')),
+                            labelText: 'Address line 1 *',
+                            hintText: 'Flat, house no., street')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _line2,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.place_outlined),
+                            labelText: 'Address line 2',
+                            hintText: 'Area, landmark')),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                            child: TextField(
-                                controller: _city,
-                                decoration:
-                                    const InputDecoration(hintText: 'City'))),
+                          child: TextField(
+                              controller: _city,
+                              textCapitalization: TextCapitalization.words,
+                              decoration:
+                                  const InputDecoration(labelText: 'City *')),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
-                            child: TextField(
-                                controller: _pincode,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                    hintText: 'Pincode'))),
+                          child: TextField(
+                              controller: _state,
+                              textCapitalization: TextCapitalization.words,
+                              decoration:
+                                  const InputDecoration(labelText: 'State *')),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        await ref
-                            .read(customerRepositoryProvider)
-                            .saveAddress(auth.id, {
-                          'name': _name.text.trim().isEmpty
-                              ? auth.name
-                              : _name.text.trim(),
-                          'mobile': '+91${_mobile.text.trim()}',
-                          'address_line': _address.text.trim(),
-                          'city': _city.text.trim(),
-                          'pincode': _pincode.text.trim(),
-                          'is_default': true,
-                        });
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Address saved')));
-                        }
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.add_location_alt_rounded),
-                      label: const Text('Add Address'),
+                    TextField(
+                        controller: _pincode,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.pin_drop_rounded),
+                            labelText: 'PIN code *',
+                            counterText: '')),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _isDefaultAddress,
+                      onChanged: (value) =>
+                          setState(() => _isDefaultAddress = value ?? false),
+                      title: const Text('Set as default delivery address'),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                    Align(
+                      alignment: Alignment.center,
+                      child: OutlinedButton.icon(
+                        onPressed: _addressLoading
+                            ? null
+                            : () => _saveAddress(auth.id),
+                        icon: const Icon(Icons.add_location_alt_rounded),
+                        label: Text(
+                            _addressLoading ? 'Saving...' : 'Save Address'),
+                      ),
                     ),
                   ],
                 ),
@@ -307,6 +439,92 @@ class _CustomerProfileEditPageState
         },
       ),
     );
+  }
+
+  Future<void> _saveProfile(String customerId) async {
+    final name = _name.text.trim();
+    final email = _email.text.trim();
+    final phone = _digits(_mobile.text);
+    if (name.isEmpty) return _snack('Full name is required');
+    if (email.isEmpty || !RegExp(r'\S+@\S+\.\S+').hasMatch(email)) {
+      return _snack('Enter a valid email address');
+    }
+    if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+      return _snack('Enter a valid 10-digit mobile number');
+    }
+    setState(() => _profileLoading = true);
+    try {
+      await ref.read(customerRepositoryProvider).updateProfile(customerId, {
+        'name': name,
+        'email': email,
+        'phone': phone,
+      });
+      ref.invalidate(customerAuthStateProvider);
+      _snack('Profile updated');
+    } catch (e) {
+      _snack('Could not update profile. Please try again.');
+    } finally {
+      if (mounted) setState(() => _profileLoading = false);
+    }
+  }
+
+  Future<void> _saveAddress(String customerId) async {
+    final phone = _digits(_addressPhone.text);
+    if (_recipient.text.trim().isEmpty) {
+      return _snack('Recipient name is required');
+    }
+    if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+      return _snack('Enter a valid 10-digit address phone number');
+    }
+    if (_line1.text.trim().isEmpty) {
+      return _snack('Address line 1 is required');
+    }
+    if (_city.text.trim().isEmpty) {
+      return _snack('City is required');
+    }
+    if (_state.text.trim().isEmpty) {
+      return _snack('State is required');
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(_digits(_pincode.text))) {
+      return _snack('Enter a valid 6-digit PIN code');
+    }
+    setState(() => _addressLoading = true);
+    try {
+      await ref.read(customerRepositoryProvider).saveAddress(customerId, {
+        'label': _label.text.trim().isEmpty ? 'Home' : _label.text.trim(),
+        'fullName': _recipient.text.trim(),
+        'phone': phone,
+        'line1': _line1.text.trim(),
+        'line2': _line2.text.trim(),
+        'city': _city.text.trim(),
+        'state': _state.text.trim(),
+        'pincode': _digits(_pincode.text),
+        'country': 'India',
+        'isDefault': _isDefaultAddress,
+      });
+      _line1.clear();
+      _line2.clear();
+      _city.clear();
+      _state.clear();
+      _pincode.clear();
+      _isDefaultAddress = false;
+      _snack('Address saved');
+      setState(() {});
+    } catch (e) {
+      _snack('Could not save address. Please try again.');
+    } finally {
+      if (mounted) setState(() => _addressLoading = false);
+    }
+  }
+
+  String _digits(String value) => value
+      .replaceAll(RegExp(r'\D'), '')
+      .replaceFirst(RegExp(r'^91(?=\d{10}$)'), '');
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -335,7 +553,8 @@ class CustomerWalletPage extends ConsumerWidget {
                       const Text('Wallet Points',
                           style: TextStyle(color: AppColors.muted)),
                       const SizedBox(height: 4),
-                      Text('${profile.i('wallet_points')} pts',
+                      Text(
+                          '${profile.n('displayAmount', profile.n('balance', profile.n('wallet_points'))).round()} pts',
                           style: const TextStyle(
                               fontSize: 34,
                               color: AppColors.primary,
@@ -355,10 +574,10 @@ class CustomerWalletPage extends ConsumerWidget {
                         child: Row(
                           children: [
                             Icon(
-                                txn.s('type') == 'redeemed'
+                                txn.n('points') < 0
                                     ? Icons.remove_circle_rounded
                                     : Icons.add_circle_rounded,
-                                color: txn.s('type') == 'redeemed'
+                                color: txn.n('points') < 0
                                     ? AppColors.danger
                                     : AppColors.success),
                             const SizedBox(width: 10),
@@ -366,7 +585,7 @@ class CustomerWalletPage extends ConsumerWidget {
                                 child: Text(txn.s('description', txn.s('type')),
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700))),
-                            Text('${txn.i('points')} pts',
+                            Text('${txn.n('points').round()} pts',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900)),
                           ],
@@ -569,9 +788,47 @@ class CustomerReferralPage extends ConsumerWidget {
                     title: 'No referrals yet',
                     message: 'Share your referral code with friends.')
               else
-                ...referrals.map((referral) => Padding(
+                ...referrals.map((referral) {
+                  final name = referral.s(
+                    'name',
+                    referral.s('fullName', referral.s('customerName')),
+                  );
+                  final joinedAt =
+                      referral.s('createdAt', referral.s('joinedAt'));
+                  return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: AppCard(child: Text(referral.toString())))),
+                    child: AppCard(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_add_alt_1_rounded,
+                              color: AppColors.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isEmpty
+                                      ? 'Referral ${referral.s('id').isEmpty ? '' : '#${referral.s('id')}'}'
+                                      : name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w900),
+                                ),
+                                if (joinedAt.isNotEmpty)
+                                  Text(shortDate(joinedAt),
+                                      style: const TextStyle(
+                                          color: AppColors.muted)),
+                              ],
+                            ),
+                          ),
+                          StatusBadge(referral.s('status', 'joined')),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
             ],
           );
         },
