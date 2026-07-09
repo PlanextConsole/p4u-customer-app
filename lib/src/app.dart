@@ -62,10 +62,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', redirect: (_, __) => '/app'),
       GoRoute(
-          path: '/auth/callback',
-          builder: (_, __) => const CustomerLandingPage()),
-      GoRoute(path: '/app', builder: (_, __) => const CustomerLandingPage()),
-      GoRoute(path: '/app/home', builder: (_, __) => const CustomerHomePage()),
+          path: '/auth/callback', builder: (_, __) => const CustomerHomePage()),
+      GoRoute(path: '/app', builder: (_, __) => const CustomerHomePage()),
+      GoRoute(path: '/app/home', redirect: (_, __) => '/app'),
       GoRoute(
           path: '/app/login', builder: (_, __) => const CustomerLoginPage()),
       GoRoute(
@@ -286,7 +285,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, state) =>
               PropertyDetailPage(id: state.pathParameters['id']!)),
     ],
-    errorBuilder: (_, __) => const CustomerLandingPage(),
+    errorBuilder: (_, __) => const CustomerHomePage(),
   );
 });
 
