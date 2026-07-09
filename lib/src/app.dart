@@ -43,8 +43,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       final path = state.uri.path;
       final needsAuth = protectedPaths.any(
           (protected) => path == protected || path.startsWith('$protected/'));
-      if (needsAuth && auth == null) return '/app/login';
+      if (needsAuth && auth == null) {
+        final returnTo = Uri.encodeComponent(state.uri.toString());
+        return '/app/login?returnTo=$returnTo';
+      }
       if ((path == '/app/login' || path == '/app/register') && auth != null) {
+        final returnTo = state.uri.queryParameters['returnTo'];
+        if (returnTo != null &&
+            returnTo.startsWith('/app') &&
+            !returnTo.startsWith('/app/login') &&
+            !returnTo.startsWith('/app/register')) {
+          return returnTo;
+        }
         return '/app';
       }
       return null;

@@ -42,7 +42,7 @@ class CustomerLandingPage extends ConsumerWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(18, 34, 18, 24),
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -52,7 +52,7 @@ class CustomerLandingPage extends ConsumerWidget {
                         _LandingAccountButton(authName: auth?.name),
                       ],
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 24),
                     const Text(
                       'Welcome!',
                       style: TextStyle(
@@ -72,7 +72,7 @@ class CustomerLandingPage extends ConsumerWidget {
                         shadows: [Shadow(color: Colors.black26, blurRadius: 6)],
                       ),
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 26),
                     Stack(
                       alignment: Alignment.center,
                       children: [
@@ -80,9 +80,9 @@ class CustomerLandingPage extends ConsumerWidget {
                           crossAxisCount: 2,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          childAspectRatio: .84,
+                          childAspectRatio: .72,
                           crossAxisSpacing: 14,
-                          mainAxisSpacing: 14,
+                          mainAxisSpacing: 16,
                           children: const [
                             _LandingCard(
                                 title: 'Shop',
@@ -122,7 +122,7 @@ class CustomerLandingPage extends ConsumerWidget {
                         _LandingQuickLink(
                             label: 'Help',
                             icon: Icons.support_agent_outlined,
-                            route: '/app/support'),
+                            route: '/app/services?search=help'),
                         _LandingQuickLink(
                             label: 'Quick Assist',
                             icon: Icons.bolt_outlined,
@@ -221,7 +221,7 @@ class _LandingCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(28),
       onTap: () => context.go(route),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: .34),
           borderRadius: BorderRadius.circular(28),
@@ -238,32 +238,32 @@ class _LandingCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 62,
+              height: 62,
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2)),
-              child: Icon(icon, color: Colors.white, size: 34),
+              child: Icon(icon, color: Colors.white, size: 30),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Text(title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
                     color: AppColors.brandDark)),
             const SizedBox(height: 8),
             SizedBox(
-              height: 42,
+              height: 38,
               child: Text(body,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 16, height: 1.1, color: AppColors.brandDark)),
+                      fontSize: 14, height: 1.12, color: AppColors.brandDark)),
             ),
-            const SizedBox(height: 12),
+            const Spacer(),
             const _LandingArrow(),
           ],
         ),
@@ -281,8 +281,8 @@ class _LandingHomeButton extends StatelessWidget {
       onTap: () => context.go('/app/home'),
       customBorder: const CircleBorder(),
       child: Container(
-        width: 112,
-        height: 112,
+        width: 104,
+        height: 104,
         decoration: BoxDecoration(
           color: AppColors.primary,
           shape: BoxShape.circle,
@@ -302,7 +302,7 @@ class _LandingHomeButton extends StatelessWidget {
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.home_outlined, color: Colors.white, size: 38),
+            Icon(Icons.home_outlined, color: Colors.white, size: 34),
             SizedBox(height: 2),
             Text('Home',
                 style: TextStyle(
@@ -352,7 +352,7 @@ class _LandingWallet extends ConsumerWidget {
                 children: [
                   const Text('Wallet',
                       style: TextStyle(
-                          fontSize: 24,
+                          fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: AppColors.brandDark)),
                   const SizedBox(height: 7),
@@ -437,7 +437,7 @@ class _LandingQuickLink extends StatelessWidget {
                       offset: Offset(0, 7))
                 ],
               ),
-              child: Icon(icon, color: Colors.white, size: 34),
+              child: Icon(icon, color: Colors.white, size: 30),
             ),
             const SizedBox(height: 8),
             Text(label,
@@ -461,8 +461,8 @@ class _LandingArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 34,
-      height: 34,
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: .20),
@@ -496,7 +496,7 @@ class CustomerHomePage extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _HomeSearch(location: location),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               _HeroBanners(data: data),
               const SectionHeader(
                   title: 'Explore Planext4u',
@@ -714,7 +714,7 @@ class _CategoryPill extends StatelessWidget {
             RemoteImage(url: category.s('image'), width: 68, height: 68),
             const SizedBox(height: 6),
             SizedBox(
-              height: 42,
+              height: 38,
               child: Center(
                 child: Text(
                   name,
@@ -1067,7 +1067,7 @@ class CustomerCartPage extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: auth == null
                     ? () => context.go('/app/login')
@@ -1142,7 +1142,7 @@ class PaymentPage extends ConsumerWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () async {
                   await ref.read(customerRepositoryProvider).placeOrder(
