@@ -24,7 +24,7 @@ class LoginRequiredPage extends StatelessWidget {
         title: 'Please login',
         message: 'This section is available for registered customers.',
         action: FilledButton(
-            onPressed: () => context.go('/app/login'),
+            onPressed: () => context.push('/app/login'),
             child: const Text('Login')),
       ),
     );
@@ -81,7 +81,7 @@ class CustomerProfilePage extends ConsumerWidget {
                           ]),
                     ),
                     IconButton(
-                        onPressed: () => context.go('/app/profile/edit'),
+                        onPressed: () => context.push('/app/profile/edit'),
                         icon: const Icon(Icons.edit_rounded)),
                   ],
                 ),
@@ -1233,7 +1233,7 @@ class _MenuTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: AppCard(
-        onTap: () => context.go(route),
+        onTap: () => context.push(route),
         child: Row(
           children: [
             Icon(icon, color: AppColors.primary),

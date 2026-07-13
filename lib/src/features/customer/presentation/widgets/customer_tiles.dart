@@ -16,41 +16,91 @@ class ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.go('/app/product/${product.s('id')}'),
+      onTap: () => context.push('/app/product/${product.s('id')}'),
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RemoteImage(
-            url: product.s('image'),
-            height: compact ? 100 : 134,
-            width: double.infinity,
-            borderRadius: 14,
+          Stack(
+            children: [
+              Container(
+                color: AppColors.productSurface,
+                child: RemoteImage(
+                  url: product.s('image'),
+                  height: compact ? 100 : 140,
+                  width: double.infinity,
+                  borderRadius: 12,
+                ),
+              ),
+              const Positioned(
+                right: 7,
+                top: 7,
+                child: Icon(Icons.favorite_border_rounded,
+                    size: 20, color: AppColors.muted),
+              ),
+              Positioned(
+                left: 7,
+                bottom: 7,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(5),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black12, blurRadius: 4)
+                    ],
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.timer_outlined, size: 11),
+                    SizedBox(width: 3),
+                    Text('10 MINS',
+                        style: TextStyle(
+                            fontSize: 9, fontWeight: FontWeight.w900)),
+                  ]),
+                ),
+              ),
+            ],
           ),
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(9, 9, 9, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(product.s('title', 'Product'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, height: 1.15)),
                 const SizedBox(height: 4),
-                Text(product.s('vendor_name'),
+                Text(
+                    product.s('vendor_name').isEmpty
+                        ? '1 unit'
+                        : product.s('vendor_name'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style:
                         const TextStyle(color: AppColors.muted, fontSize: 12)),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                         child: Text(money(product.n('price')),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w900,
-                                color: AppColors.primary))),
-                    if (product.n('rating') > 0) _Rating(product.n('rating')),
+                                color: AppColors.brandDark))),
+                    SizedBox(
+                      height: 34,
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            context.push('/app/product/${product.s('id')}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(64, 34),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        ),
+                        child: const Text('ADD'),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -70,7 +120,7 @@ class ServiceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.go('/app/service/${service.s('id')}'),
+      onTap: () => context.push('/app/service/${service.s('id')}'),
       child: Row(
         children: [
           RemoteImage(url: service.s('image'), width: 82, height: 82),
@@ -109,7 +159,7 @@ class ClassifiedTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.go('/app/classifieds/${ad.s('id')}'),
+      onTap: () => context.push('/app/classifieds/${ad.s('id')}'),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -150,7 +200,7 @@ class PropertyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.go('/app/find-home/${property.s('id')}'),
+      onTap: () => context.push('/app/find-home/${property.s('id')}'),
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,30 +238,6 @@ class PropertyTile extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Rating extends StatelessWidget {
-  const _Rating(this.value);
-  final num value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-          color: AppColors.warning.withValues(alpha: .15),
-          borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        children: [
-          const Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
-          const SizedBox(width: 2),
-          Text(value.toStringAsFixed(1),
-              style:
-                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
         ],
       ),
     );

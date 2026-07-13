@@ -24,13 +24,13 @@ class SocialFeedPage extends ConsumerWidget {
       bottomNavIndex: 3,
       actions: [
         IconButton(
-            onPressed: () => context.go('/app/social/create'),
+            onPressed: () => context.push('/app/social/create'),
             icon: const Icon(Icons.add_box_rounded)),
         IconButton(
-            onPressed: () => context.go('/app/social/notifications'),
+            onPressed: () => context.push('/app/social/notifications'),
             icon: const Icon(Icons.notifications_rounded)),
         IconButton(
-            onPressed: () => context.go('/app/social/messages'),
+            onPressed: () => context.push('/app/social/messages'),
             icon: const Icon(Icons.send_rounded)),
       ],
       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -81,7 +81,8 @@ class SocialPostCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
-            onTap: () => context.go('/app/social/profile/${post.s('user_id')}'),
+            onTap: () =>
+                context.push('/app/social/profile/${post.s('user_id')}'),
             leading: const CircleAvatar(
                 backgroundColor: AppColors.accent,
                 child: Icon(Icons.person_rounded, color: AppColors.primary)),
@@ -89,7 +90,8 @@ class SocialPostCard extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             subtitle: Text(shortDate(post['created_at'])),
             trailing: IconButton(
-                onPressed: () => context.go('/app/social/post/${post.s('id')}'),
+                onPressed: () =>
+                    context.push('/app/social/post/${post.s('id')}'),
                 icon: const Icon(Icons.more_horiz_rounded)),
           ),
           if (media.isNotEmpty)
@@ -113,8 +115,8 @@ class SocialPostCard extends StatelessWidget {
                         icon: const Icon(Icons.favorite_border_rounded)),
                     Text('${post.i('likes_count', post.i('like_count'))}'),
                     IconButton(
-                        onPressed: () =>
-                            context.go('/app/social/comments/${post.s('id')}'),
+                        onPressed: () => context
+                            .push('/app/social/comments/${post.s('id')}'),
                         icon: const Icon(Icons.mode_comment_outlined)),
                     Text(
                         '${post.i('comments_count', post.i('comment_count'))}'),
@@ -274,7 +276,7 @@ class SocialProfilePage extends ConsumerWidget {
       showBack: true,
       actions: [
         IconButton(
-            onPressed: () => context.go('/app/social/settings'),
+            onPressed: () => context.push('/app/social/settings'),
             icon: const Icon(Icons.settings_rounded))
       ],
       child: FutureBuilder<Map<String, dynamic>?>(
@@ -325,13 +327,13 @@ class SocialProfilePage extends ConsumerWidget {
                       Expanded(
                           child: OutlinedButton(
                               onPressed: () =>
-                                  context.go('/app/social/edit-profile'),
+                                  context.push('/app/social/edit-profile'),
                               child: const Text('Edit Profile'))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: FilledButton(
                               onPressed: () =>
-                                  context.go('/app/social/messages/$target'),
+                                  context.push('/app/social/messages/$target'),
                               child: const Text('Message'))),
                     ]),
                   ],
@@ -392,7 +394,7 @@ class SocialPostDetailPage extends ConsumerWidget {
             SocialPostCard(post: post),
             const SizedBox(height: 12),
             FilledButton(
-                onPressed: () => context.go('/app/social/comments/$postId'),
+                onPressed: () => context.push('/app/social/comments/$postId'),
                 child: const Text('View Comments'))
           ]);
         },
@@ -461,7 +463,7 @@ class SocialDMPage extends ConsumerWidget {
               children: rows
                   .map((c) => AppCard(
                       onTap: () =>
-                          context.go('/app/social/messages/${c.s('id')}'),
+                          context.push('/app/social/messages/${c.s('id')}'),
                       child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.chat_rounded),
@@ -832,7 +834,7 @@ class _SocialQuickNav extends StatelessWidget {
         itemBuilder: (context, index) {
           final item = items[index];
           return AppCard(
-            onTap: () => context.go(item.$3),
+            onTap: () => context.push(item.$3),
             child: SizedBox(
                 width: 82,
                 child: Column(
@@ -902,7 +904,7 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: AppCard(
-            onTap: () => context.go(route),
+            onTap: () => context.push(route),
             child: Row(children: [
               Icon(icon, color: AppColors.primary),
               const SizedBox(width: 12),

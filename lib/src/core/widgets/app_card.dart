@@ -43,7 +43,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 8, 2, 10),
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 10),
       child: Row(
         children: [
           Expanded(
@@ -51,10 +51,8 @@ class SectionHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900, letterSpacing: -.2)),
                 if (subtitle != null)
                   Text(subtitle!,
                       style: Theme.of(context)

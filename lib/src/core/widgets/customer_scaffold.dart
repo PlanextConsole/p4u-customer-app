@@ -34,83 +34,70 @@ class CustomerScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(customerAuthStateProvider);
     final customer = auth.valueOrNull;
-    final interceptBack = bottomNavIndex != null && !showBack;
-    return PopScope(
-      canPop: !interceptBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop || !interceptBack) return;
-        final currentPath = GoRouterState.of(context).uri.path;
-        if (currentPath != '/app') {
-          context.go('/app');
-          return;
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You are already on Home')),
-        );
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          leading: showBack
-              ? IconButton(
-                  onPressed: () => context.pop(),
-                  icon: const Icon(Icons.arrow_back_rounded))
-              : null,
-          titleSpacing: showBack ? 0 : 16,
-          title: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Image.asset('assets/images/p4u-logo.png',
-                    fit: BoxFit.contain),
+    return Scaffold(
+      appBar: AppBar(
+        leading: showBack
+            ? IconButton(
+                onPressed: () => context.pop(),
+                icon: const Icon(Icons.arrow_back_rounded))
+            : null,
+        titleSpacing: showBack ? 0 : 16,
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                  child: Text(title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis)),
-            ],
-          ),
-          actions: [
-            IconButton(
-              tooltip: 'Cart',
-              onPressed: () => context.go('/app/cart'),
-              icon: const Icon(Icons.shopping_cart_rounded),
+              child: Image.asset('assets/images/p4u-logo.png',
+                  fit: BoxFit.contain),
             ),
-            if (customer == null)
-              TextButton(
-                onPressed: () => context.go('/app/login'),
-                child: const Text('Login',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
-              )
-            else
-              IconButton(
-                tooltip: 'Profile',
-                onPressed: () => context.go('/app/profile'),
-                icon: CircleAvatar(
-                  radius: 14,
-                  backgroundColor: Colors.white.withValues(alpha: .18),
-                  child: Text(
-                      customer.name.isEmpty
-                          ? 'U'
-                          : customer.name.characters.first.toUpperCase(),
-                      style:
-                          const TextStyle(color: Colors.white, fontSize: 12)),
-                ),
-              ),
-            ...?actions,
+            const SizedBox(width: 8),
+            Flexible(
+                child:
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
           ],
         ),
-        body: child,
-        bottomNavigationBar: bottomNavIndex == null
-            ? null
-            : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
+        actions: [
+          IconButton(
+            tooltip: 'Cart',
+            onPressed: () => context.push('/app/cart'),
+            icon: const Icon(Icons.shopping_cart_rounded),
+          ),
+          if (customer == null)
+            TextButton(
+              onPressed: () => context.push('/app/login'),
+              child: const Text('Login',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w900)),
+            )
+          else
+            IconButton(
+              tooltip: 'Profile',
+              onPressed: () => context.push('/app/profile'),
+              icon: CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.white,
+                child: Text(
+                    customer.name.isEmpty
+                        ? 'U'
+                        : customer.name.characters.first.toUpperCase(),
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900)),
+              ),
+            ),
+          ...?actions,
+        ],
       ),
+      body: child,
+      bottomNavigationBar: bottomNavIndex == null
+          ? null
+          : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
     );
   }
 }
@@ -137,7 +124,7 @@ class _CustomerBottomNav extends StatelessWidget {
         height: 70,
         padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
         decoration: const BoxDecoration(
-          color: Color(0xFFF7FAFA),
+          color: Colors.white,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         child: Row(
@@ -147,7 +134,11 @@ class _CustomerBottomNav extends StatelessWidget {
                 child: _BottomNavItem(
                   item: CustomerScaffold.nav[index],
                   selected: index == selected,
-                  onTap: () => context.go(CustomerScaffold.nav[index].route),
+                  onTap: () {
+                    if (index != selected) {
+                      context.push(CustomerScaffold.nav[index].route);
+                    }
+                  },
                 ),
               ),
           ],
@@ -178,17 +169,26 @@ class _BottomNavItem extends StatelessWidget {
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            height: 34,
-            width: selected ? 48 : 40,
+            height: 30,
+            width: selected ? 42 : 38,
             decoration: BoxDecoration(
-              color: selected ? AppColors.accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(17),
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(item.icon,
                 size: 23,
                 color: selected
                     ? AppColors.primary
                     : AppColors.brandDark.withValues(alpha: .72)),
+          ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: selected ? 18 : 0,
+            height: 2,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const SizedBox(height: 2),
           FittedBox(

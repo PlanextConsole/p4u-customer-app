@@ -12,6 +12,16 @@ import '../../../core/widgets/app_card.dart';
 import '../../../features/customer/data/customer_providers.dart';
 import '../data/auth_repository.dart';
 
+ButtonStyle _authOutlineStyle({Size? minimumSize}) => FilledButton.styleFrom(
+      backgroundColor: Colors.white,
+      foregroundColor: AppColors.primary,
+      disabledBackgroundColor: AppColors.background,
+      disabledForegroundColor: AppColors.muted,
+      minimumSize: minimumSize ?? const Size.fromHeight(50),
+      side: const BorderSide(color: AppColors.primary, width: 1.3),
+      elevation: 0,
+    );
+
 class CustomerLoginPage extends ConsumerStatefulWidget {
   const CustomerLoginPage({super.key});
 
@@ -150,65 +160,68 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     });
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFFF7E8), Colors.white, Color(0xFFE8FFFF)]),
-        ),
+        color: AppColors.background,
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.all(18),
             children: [
-              const SizedBox(height: 28),
+              const SizedBox(height: 18),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 460),
                   child: Card(
-                    elevation: 16,
-                    shadowColor: AppColors.brandDark.withValues(alpha: .12),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24)),
+                      borderRadius: BorderRadius.circular(20),
+                      side: const BorderSide(color: AppColors.border),
+                    ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(28),
-                          decoration: const BoxDecoration(
-                              gradient: LinearGradient(colors: [
-                            AppColors.primary,
-                            AppColors.primaryDark
-                          ])),
+                          padding: const EdgeInsets.fromLTRB(24, 26, 24, 20),
+                          decoration: const BoxDecoration(color: Colors.white),
                           child: Column(
                             children: [
                               Container(
-                                width: 74,
-                                height: 74,
-                                padding: const EdgeInsets.all(10),
+                                width: 64,
+                                height: 64,
+                                padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20)),
+                                    color: AppColors.productSurface,
+                                    border: Border.all(color: AppColors.border),
+                                    borderRadius: BorderRadius.circular(18)),
                                 child: Image.asset('assets/images/p4u-logo.png',
                                     fit: BoxFit.contain),
                               ),
                               const SizedBox(height: 12),
-                              const Text('Planext 4u',
+                              const Text('Welcome back',
                                   style: TextStyle(
-                                      color: Colors.white,
+                                      color: AppColors.brandDark,
                                       fontSize: 22,
                                       fontWeight: FontWeight.w900)),
-                              const Text('Shop, services, social and homes',
+                              const SizedBox(height: 4),
+                              const Text('Sign in to continue to Planext4u',
                                   style: TextStyle(
-                                      color: Colors.white70, fontSize: 12)),
+                                      color: AppColors.muted, fontSize: 12)),
                             ],
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(22),
+                          padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
                           child: Column(
                             children: [
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('Choose sign-in method',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.muted,
+                                        fontWeight: FontWeight.w700)),
+                              ),
+                              const SizedBox(height: 10),
                               _modeSwitch(),
                               const SizedBox(height: 16),
                               if (_passwordMode) ...[
@@ -286,7 +299,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                         height: 18,
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2,
-                                            color: Colors.white))
+                                            color: AppColors.primary))
                                     : Icon(_passwordMode
                                         ? Icons.login_rounded
                                         : (_otpSent
@@ -299,17 +312,28 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                         : (_otpSent
                                             ? 'Verify OTP'
                                             : 'Send OTP'))),
-                                style: FilledButton.styleFrom(
+                                style: _authOutlineStyle(
                                     minimumSize: const Size.fromHeight(52)),
                               ),
                               const SizedBox(height: 10),
-                              TextButton(
-                                  onPressed: () =>
-                                      context.go('/app/forgot-password'),
-                                  child: const Text('Forgot Password?')),
-                              TextButton(
-                                  onPressed: () => context.go('/app/register'),
-                                  child: const Text('New user? Register here')),
+                              Row(children: [
+                                Expanded(
+                                  child: TextButton(
+                                      onPressed: () =>
+                                          context.push('/app/forgot-password'),
+                                      child: const Text('Forgot password?')),
+                                ),
+                                Container(
+                                    width: 1,
+                                    height: 18,
+                                    color: AppColors.border),
+                                Expanded(
+                                  child: TextButton(
+                                      onPressed: () =>
+                                          context.push('/app/register'),
+                                      child: const Text('Create account')),
+                                ),
+                              ]),
                             ],
                           ),
                         ),
@@ -327,12 +351,12 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
 
   Widget _modeSwitch() {
     return Container(
-      height: 48,
-      padding: const EdgeInsets.all(3),
+      height: 50,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
           border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(26),
-          color: const Color(0xFFF7FAFA)),
+          borderRadius: BorderRadius.circular(12),
+          color: AppColors.productSurface),
       child: Row(
         children: [
           _modeButton(
@@ -364,13 +388,20 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
           margin: const EdgeInsets.symmetric(horizontal: 1),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-              color: selected ? const Color(0xFFD5F1F0) : Colors.transparent,
-              borderRadius: BorderRadius.circular(22)),
+            color: selected ? Colors.white : Colors.transparent,
+            border: Border.all(
+                color: selected ? AppColors.primary : Colors.transparent),
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: selected
+                ? const [BoxShadow(color: Colors.black12, blurRadius: 5)]
+                : null,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(selected ? Icons.check_rounded : icon,
-                  size: 18, color: AppColors.brandDark),
+              Icon(icon,
+                  size: 18,
+                  color: selected ? AppColors.primary : AppColors.muted),
               const SizedBox(width: 6),
               Flexible(
                   child: FittedBox(
@@ -378,8 +409,12 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                       child: Text(label,
                           maxLines: 1,
                           softWrap: false,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w800)))),
+                          style: TextStyle(
+                              color: selected
+                                  ? AppColors.primary
+                                  : AppColors.brandDark,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800)))),
             ],
           ),
         ),
@@ -530,6 +565,7 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Create Account')),
+      backgroundColor: AppColors.background,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -537,9 +573,26 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
               child: Image.asset('assets/images/p4u-logo.png',
                   width: 86, height: 86)),
           const SizedBox(height: 14),
+          const Text('Join Planext4u',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          const Text('Create one account for shopping, services and homes',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted)),
+          const SizedBox(height: 18),
           AppCard(
+            padding: const EdgeInsets.all(20),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Your details',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                const Text('Fields marked with * are required',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                const SizedBox(height: 16),
                 TextField(
                     controller: _name,
                     decoration: const InputDecoration(
@@ -596,12 +649,14 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
                   FilledButton.icon(
                       onPressed: _loading ? null : _verifyOtp,
                       icon: const Icon(Icons.verified_user_rounded),
-                      label: const Text('Verify OTP')),
+                      label: const Text('Verify OTP'),
+                      style: _authOutlineStyle()),
                 ] else if (!_verified) ...[
                   FilledButton.icon(
                       onPressed: _loading ? null : _sendOtp,
                       icon: const Icon(Icons.arrow_forward_rounded),
-                      label: Text(_loading ? 'Please wait...' : 'Send OTP')),
+                      label: Text(_loading ? 'Please wait...' : 'Send OTP'),
+                      style: _authOutlineStyle()),
                 ] else ...[
                   const StatusBadge('phone verified'),
                   const SizedBox(height: 12),
@@ -622,13 +677,14 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
                   FilledButton.icon(
                       onPressed: _loading ? null : _register,
                       icon: const Icon(Icons.person_add_rounded),
-                      label: Text(_loading ? 'Creating...' : 'Create Account')),
+                      label: Text(_loading ? 'Creating...' : 'Create Account'),
+                      style: _authOutlineStyle()),
                 ],
               ],
             ),
           ),
           TextButton(
-              onPressed: () => context.go('/app/login'),
+              onPressed: () => context.push('/app/login'),
               child: const Text('Already registered? Login')),
         ],
       ),

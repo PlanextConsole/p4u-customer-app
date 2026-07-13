@@ -45,7 +45,7 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
       bottomNavIndex: 4,
       actions: [
         IconButton(
-            onPressed: () => context.go('/app/find-home/post'),
+            onPressed: () => context.push('/app/find-home/post'),
             icon: const Icon(Icons.add_home_work_rounded))
       ],
       child: RefreshIndicator(
@@ -89,11 +89,11 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                         })),
                 ActionChip(
                     label: const Text('EMI'),
-                    onPressed: () => context.go('/app/find-home/emi')),
+                    onPressed: () => context.push('/app/find-home/emi')),
                 ActionChip(
                     label: const Text('Estimate'),
                     onPressed: () =>
-                        context.go('/app/find-home/value-estimator')),
+                        context.push('/app/find-home/value-estimator')),
               ],
             ),
             const SizedBox(height: 14),

@@ -24,7 +24,7 @@ class CustomerLandingPage extends ConsumerWidget {
         fit: StackFit.expand,
         children: [
           Image.asset('assets/images/splash-customer-1.jpg', fit: BoxFit.cover),
-          Container(color: AppColors.primary.withValues(alpha: .66)),
+          Container(color: AppColors.primary.withValues(alpha: .78)),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -32,7 +32,7 @@ class CustomerLandingPage extends ConsumerWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.white.withValues(alpha: .72)
+                  AppColors.accent.withValues(alpha: .96)
                 ],
               ),
             ),
@@ -56,7 +56,7 @@ class CustomerLandingPage extends ConsumerWidget {
                     const Text(
                       'Welcome!',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.brandDark,
                         fontSize: 34,
                         fontWeight: FontWeight.w900,
                         shadows: [Shadow(color: Colors.black26, blurRadius: 8)],
@@ -66,7 +66,7 @@ class CustomerLandingPage extends ConsumerWidget {
                     const Text(
                       'Everything you need, in one place.',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.brandDark,
                         fontSize: 19,
                         fontWeight: FontWeight.w700,
                         shadows: [Shadow(color: Colors.black26, blurRadius: 6)],
@@ -150,9 +150,9 @@ class _LandingLogo extends StatelessWidget {
       height: 72,
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.warning, width: 1.2),
+        border: Border.all(color: AppColors.primary, width: 1.2),
         boxShadow: const [
           BoxShadow(color: Colors.black26, blurRadius: 18, offset: Offset(0, 8))
         ],
@@ -170,13 +170,13 @@ class _LandingAccountButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final loggedIn = authName != null;
     return InkWell(
-      onTap: () => context.go(loggedIn ? '/app/profile' : '/app/login'),
+      onTap: () => context.push(loggedIn ? '/app/profile' : '/app/login'),
       customBorder: const CircleBorder(),
       child: Container(
         width: 72,
         height: 72,
         decoration: BoxDecoration(
-          color: AppColors.primary,
+          color: Colors.white,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 3),
           boxShadow: const [
@@ -191,12 +191,12 @@ class _LandingAccountButton extends StatelessWidget {
                       ? 'U'
                       : authName!.trim().characters.first.toUpperCase(),
                   style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.primary,
                       fontWeight: FontWeight.w900,
                       fontSize: 22),
                 )
               : const Icon(Icons.person_outline_rounded,
-                  color: Colors.white, size: 34),
+                  color: AppColors.primary, size: 34),
         ),
       ),
     );
@@ -219,11 +219,11 @@ class _LandingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(28),
-      onTap: () => context.go(route),
+      onTap: () => context.push(route),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .34),
+          color: Colors.white.withValues(alpha: .94),
           borderRadius: BorderRadius.circular(28),
           border:
               Border.all(color: Colors.white.withValues(alpha: .9), width: 1.8),
@@ -243,7 +243,7 @@ class _LandingCard extends StatelessWidget {
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2)),
-              child: Icon(icon, color: Colors.white, size: 30),
+              child: Icon(icon, color: AppColors.primary, size: 30),
             ),
             const SizedBox(height: 12),
             Text(title,
@@ -278,7 +278,7 @@ class _LandingHomeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/app/home'),
+      onTap: () => context.push('/app/home'),
       customBorder: const CircleBorder(),
       child: Container(
         width: 104,
@@ -325,7 +325,7 @@ class _LandingWallet extends ConsumerWidget {
     final balance = authenticated ? ref.watch(landingWalletProvider) : null;
     return InkWell(
       borderRadius: BorderRadius.circular(26),
-      onTap: () => context.go(authenticated ? '/app/wallet' : '/app/login'),
+      onTap: () => context.push(authenticated ? '/app/wallet' : '/app/login'),
       child: Container(
         constraints: const BoxConstraints(minHeight: 112),
         padding: const EdgeInsets.all(18),
@@ -417,7 +417,7 @@ class _LandingQuickLink extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(50),
-      onTap: () => context.go(route),
+      onTap: () => context.push(route),
       child: SizedBox(
         width: 96,
         child: Column(
@@ -493,17 +493,17 @@ class CustomerHomePage extends ConsumerWidget {
         data: (data) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(homeProvider),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
             children: [
               _HomeSearch(location: location),
               const SizedBox(height: 12),
               _HeroBanners(data: data),
               const SectionHeader(
-                  title: 'Explore Planext4u',
-                  subtitle: 'Everything from shopping to homes in one app'),
+                  title: 'Shop by service',
+                  subtitle: 'Everything you need, delivered simply'),
               GridView.count(
                 crossAxisCount: 3,
-                childAspectRatio: .95,
+                childAspectRatio: 1.0,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 10,
@@ -582,20 +582,31 @@ class _HomeSearch extends StatelessWidget {
     final controller = TextEditingController();
     return Column(
       children: [
-        AppCard(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          onTap: () => context.go('/app/set-location'),
-          child: Row(
-            children: [
-              const Icon(Icons.location_on_rounded, color: AppColors.warning),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text(location,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800))),
-              const Icon(Icons.keyboard_arrow_down_rounded),
-            ],
+        InkWell(
+          onTap: () => context.push('/app/set-location'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.timer_rounded,
+                    color: AppColors.primary, size: 21),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      const Text('Delivery in 10 minutes',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 16)),
+                      Text(location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.muted)),
+                    ])),
+                const Icon(Icons.keyboard_arrow_down_rounded),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -603,12 +614,12 @@ class _HomeSearch extends StatelessWidget {
           controller: controller,
           textInputAction: TextInputAction.search,
           onSubmitted: (value) =>
-              context.go('/app/browse?search=${Uri.encodeComponent(value)}'),
+              context.push('/app/browse?search=${Uri.encodeComponent(value)}'),
           decoration: InputDecoration(
-            hintText: 'Search products, services, homes',
+            hintText: 'Search for products and more',
             prefixIcon: const Icon(Icons.search_rounded),
             suffixIcon: IconButton(
-                onPressed: () => context.go(
+                onPressed: () => context.push(
                     '/app/browse?search=${Uri.encodeComponent(controller.text)}'),
                 icon: const Icon(Icons.arrow_forward_rounded)),
           ),
@@ -680,11 +691,19 @@ class _HomeAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => context.go(route),
+      onTap: () => context.push(route),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 28),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 26),
+          ),
           const SizedBox(height: 8),
           FittedBox(
               child: Text(label,
@@ -705,7 +724,7 @@ class _CategoryPill extends StatelessWidget {
     final name = category.s('name', 'Category');
     return InkWell(
       onTap: () =>
-          context.go('/app/browse?category=${Uri.encodeComponent(name)}'),
+          context.push('/app/browse?category=${Uri.encodeComponent(name)}'),
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
         width: 92,
@@ -898,35 +917,68 @@ class CustomerProductPage extends ConsumerWidget {
                 message: 'This product may no longer be available.');
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
             children: [
-              RemoteImage(
-                  url: product.s('image'),
-                  height: 280,
-                  width: double.infinity,
-                  borderRadius: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.productSurface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: RemoteImage(
+                    url: product.s('image'),
+                    height: 310,
+                    width: double.infinity,
+                    borderRadius: 12),
+              ),
               const SizedBox(height: 16),
+              const Row(children: [
+                Icon(Icons.timer_outlined, size: 15, color: AppColors.primary),
+                SizedBox(width: 5),
+                Text('10 MINS',
+                    style:
+                        TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+              ]),
+              const SizedBox(height: 8),
               Text(product.s('title'),
                   style: Theme.of(context)
                       .textTheme
                       .headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 6),
-              Text(product.s('vendor_name'),
-                  style: const TextStyle(color: AppColors.muted)),
+              Text(
+                  product.s('vendor_name').isEmpty
+                      ? '1 unit'
+                      : product.s('vendor_name'),
+                  style: const TextStyle(
+                      color: AppColors.muted, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Text(money(product.n('price')),
                       style: const TextStyle(
                           fontWeight: FontWeight.w900,
-                          color: AppColors.primary,
+                          color: AppColors.brandDark,
                           fontSize: 24)),
                   if (product.n('discount') > 0) ...[
                     const SizedBox(width: 8),
                     StatusBadge('${money(product.n('discount'))} off'),
                   ],
                 ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Row(children: [
+                  Icon(Icons.bolt_rounded, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Expanded(
+                      child: Text('Superfast delivery to your doorstep',
+                          style: TextStyle(fontWeight: FontWeight.w800))),
+                ]),
               ),
               const SizedBox(height: 12),
               Text(product.s('description',
@@ -976,7 +1028,8 @@ class CustomerProductPage extends ConsumerWidget {
               OutlinedButton.icon(
                 onPressed: product.s('vendor_id').isEmpty
                     ? null
-                    : () => context.go('/app/vendor/${product.s('vendor_id')}'),
+                    : () =>
+                        context.push('/app/vendor/${product.s('vendor_id')}'),
                 icon: const Icon(Icons.storefront_rounded),
                 label: const Text('View Seller'),
               ),
@@ -1011,13 +1064,39 @@ class CustomerCartPage extends ConsumerWidget {
               title: 'Your cart is empty',
               message: 'Add products from the shop to checkout.',
               action: FilledButton(
-                  onPressed: () => context.go('/app/browse'),
+                  onPressed: () => context.push('/app/browse'),
                   child: const Text('Shop Now')),
             );
           }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border)),
+                child: const Row(children: [
+                  CircleAvatar(
+                      backgroundColor: AppColors.accent,
+                      child:
+                          Icon(Icons.timer_rounded, color: AppColors.primary)),
+                  SizedBox(width: 12),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text('Delivery in 10 minutes',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900, fontSize: 17)),
+                        Text('Shipment of all items',
+                            style: TextStyle(
+                                color: AppColors.muted, fontSize: 12)),
+                      ])),
+                ]),
+              ),
               for (final item in cart.items)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -1070,8 +1149,8 @@ class CustomerCartPage extends ConsumerWidget {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: auth == null
-                    ? () => context.go('/app/login')
-                    : () => context.go('/app/payment'),
+                    ? () => context.push('/app/login')
+                    : () => context.push('/app/payment'),
                 icon: const Icon(Icons.payment_rounded),
                 label: Text(
                     auth == null ? 'Login to Checkout' : 'Proceed to Payment'),
@@ -1197,7 +1276,7 @@ class CustomerOrdersPage extends ConsumerWidget {
             itemBuilder: (context, index) {
               final order = orders[index];
               return AppCard(
-                onTap: () => context.go('/app/orders/${order.s('id')}'),
+                onTap: () => context.push('/app/orders/${order.s('id')}'),
                 child: Row(
                   children: [
                     const Icon(Icons.receipt_long_rounded,
@@ -1503,7 +1582,7 @@ class _LoginRequired extends StatelessWidget {
         title: 'Please login',
         message: 'This section is available for registered customers.',
         action: FilledButton(
-            onPressed: () => context.go('/app/login'),
+            onPressed: () => context.push('/app/login'),
             child: const Text('Login')),
       ),
     );

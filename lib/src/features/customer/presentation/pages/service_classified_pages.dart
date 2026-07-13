@@ -213,7 +213,7 @@ class _CustomerServiceDetailPageState
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: auth == null
-                          ? () => context.go('/app/login')
+                          ? () => context.push('/app/login')
                           : () async {
                               await ref
                                   .read(customerRepositoryProvider)
@@ -299,7 +299,7 @@ class _CustomerClassifiedsPageState
       bottomNavIndex: 5,
       actions: [
         IconButton(
-            onPressed: () => context.go('/app/classifieds/post'),
+            onPressed: () => context.push('/app/classifieds/post'),
             icon: const Icon(Icons.add_rounded)),
       ],
       child: RefreshIndicator(
