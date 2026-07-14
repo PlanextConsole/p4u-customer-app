@@ -8,6 +8,7 @@ import '../../../../core/utils/map_ext.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/customer_scaffold.dart';
 import '../../../../core/widgets/remote_image.dart';
+import '../../../../core/widgets/social_video.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import 'account_pages.dart';
@@ -65,16 +66,44 @@ class SocialFeedPage extends ConsumerWidget {
   }
 }
 
-class SocialPostCard extends StatelessWidget {
+class SocialPostCard extends ConsumerStatefulWidget {
   const SocialPostCard({required this.post, super.key});
   final Map<String, dynamic> post;
 
   @override
+  ConsumerState<SocialPostCard> createState() => _SocialPostCardState();
+}
+
+class _SocialPostCardState extends ConsumerState<SocialPostCard> {
+  late bool _liked;
+  late bool _saved;
+  late int _likes;
+
+  @override
+  void initState() {
+    super.initState();
+    final post = widget.post;
+    _liked = post['liked'] == true;
+    _saved = post['saved'] == true;
+    _likes = post.i('likes_count', post.i('like_count'));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final media =
-        post['media_urls'] is List && (post['media_urls'] as List).isNotEmpty
-            ? (post['media_urls'] as List).first.toString()
-            : post.s('image_url');
+    final post = widget.post;
+    final mediaList = post['media_urls'] is List
+        ? (post['media_urls'] as List).map((e) => e.toString()).toList()
+        : <String>[];
+    // Prefer a video URL when the post has one (same rule as the web feed).
+    final media = mediaList.firstWhere(isVideoUrl,
+        orElse: () =>
+            mediaList.isNotEmpty ? mediaList.first : post.s('image_url'));
+    final isVideo = isVideoUrl(media) ||
+        post.s('post_type') == 'video' ||
+        post.s('postType') == 'video' ||
+        post.s('media_type') == 'video' ||
+        post.s('mediaType') == 'video';
+    final postId = post.s('id');
     return AppCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -95,11 +124,13 @@ class SocialPostCard extends StatelessWidget {
                 icon: const Icon(Icons.more_horiz_rounded)),
           ),
           if (media.isNotEmpty)
-            RemoteImage(
-                url: media,
-                height: 280,
-                width: double.infinity,
-                borderRadius: 0),
+            isVideo
+                ? SocialVideo(url: media, height: 300)
+                : RemoteImage(
+                    url: media,
+                    height: 280,
+                    width: double.infinity,
+                    borderRadius: 0),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -111,19 +142,29 @@ class SocialPostCard extends StatelessWidget {
                 Row(
                   children: [
                     IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.favorite_border_rounded)),
-                    Text('${post.i('likes_count', post.i('like_count'))}'),
+                        onPressed: () => _toggleLike(postId),
+                        icon: Icon(
+                          _liked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: _liked ? Colors.red : null,
+                        )),
+                    Text('$_likes'),
                     IconButton(
-                        onPressed: () => context
-                            .push('/app/social/comments/${post.s('id')}'),
+                        onPressed: () =>
+                            context.push('/app/social/comments/$postId'),
                         icon: const Icon(Icons.mode_comment_outlined)),
                     Text(
                         '${post.i('comments_count', post.i('comment_count'))}'),
+                    IconButton(
+                        onPressed: () => _share(postId),
+                        icon: const Icon(Icons.share_outlined)),
                     const Spacer(),
                     IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.bookmark_border_rounded)),
+                        onPressed: () => _toggleSave(postId),
+                        icon: Icon(_saved
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_border_rounded)),
                   ],
                 ),
               ],
@@ -132,6 +173,64 @@ class SocialPostCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleLike(String postId) async {
+    if (postId.isEmpty) return;
+    final repo = ref.read(customerRepositoryProvider);
+    final wasLiked = _liked;
+    setState(() {
+      _liked = !wasLiked;
+      _likes += wasLiked ? -1 : 1;
+      if (_likes < 0) _likes = 0;
+    });
+    try {
+      if (wasLiked) {
+        await repo.unlikeSocialPost(postId);
+      } else {
+        await repo.likeSocialPost(postId);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _liked = wasLiked;
+        _likes += wasLiked ? 1 : -1;
+        if (_likes < 0) _likes = 0;
+      });
+    }
+  }
+
+  Future<void> _toggleSave(String postId) async {
+    if (postId.isEmpty) return;
+    final repo = ref.read(customerRepositoryProvider);
+    final wasSaved = _saved;
+    setState(() => _saved = !wasSaved);
+    try {
+      if (wasSaved) {
+        await repo.unsaveSocialPost(postId);
+      } else {
+        await repo.saveSocialPost(postId);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saved = wasSaved);
+    }
+  }
+
+  Future<void> _share(String postId) async {
+    if (postId.isEmpty) return;
+    try {
+      await ref.read(customerRepositoryProvider).shareSocialPost(postId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Post shared')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 }
 
@@ -403,36 +502,106 @@ class SocialPostDetailPage extends ConsumerWidget {
   }
 }
 
-class SocialCommentsPage extends ConsumerWidget {
+class SocialCommentsPage extends ConsumerStatefulWidget {
   const SocialCommentsPage({required this.postId, super.key});
   final String postId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SocialCommentsPage> createState() => _SocialCommentsPageState();
+}
+
+class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
+  final _composer = TextEditingController();
+  late Future<List<Map<String, dynamic>>> _future;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(customerRepositoryProvider).socialComments(widget.postId);
+  }
+
+  @override
+  void dispose() {
+    _composer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return CustomerScaffold(
       title: 'Comments',
       showBack: true,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).socialComments(postId),
-        builder: (context, snapshot) {
-          final rows = snapshot.data ?? [];
-          if (rows.isEmpty) {
-            return const EmptyState(
-                icon: Icons.mode_comment_rounded,
-                title: 'No comments',
-                message: 'Comments will appear here.');
-          }
-          return ListView(
-              padding: const EdgeInsets.all(16),
-              children: rows
-                  .map((c) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child:
-                          AppCard(child: Text(c.s('content', c.s('comment'))))))
-                  .toList());
-        },
+      child: Column(
+        children: [
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _future,
+              builder: (context, snapshot) {
+                final rows = snapshot.data ?? [];
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (rows.isEmpty) {
+                  return const EmptyState(
+                      icon: Icons.mode_comment_rounded,
+                      title: 'No comments',
+                      message: 'Be the first to comment.');
+                }
+                return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: rows
+                        .map((c) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: AppCard(
+                                child: Text(
+                                    c.s('content', c.s('comment', c.s('contentText')))))))
+                        .toList());
+              },
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _composer,
+                      decoration:
+                          const InputDecoration(hintText: 'Add a comment'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _sending ? null : _send,
+                    icon: const Icon(Icons.send_rounded),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _send() async {
+    final text = _composer.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      await ref
+          .read(customerRepositoryProvider)
+          .createSocialComment(widget.postId, text);
+      _composer.clear();
+      setState(() {
+        _future =
+            ref.read(customerRepositoryProvider).socialComments(widget.postId);
+      });
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 }
 
@@ -476,13 +645,36 @@ class SocialDMPage extends ConsumerWidget {
   }
 }
 
-class SocioDMChatPage extends ConsumerWidget {
+class SocioDMChatPage extends ConsumerStatefulWidget {
   const SocioDMChatPage({required this.recipientId, super.key});
   final String recipientId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController();
+  ConsumerState<SocioDMChatPage> createState() => _SocioDMChatPageState();
+}
+
+class _SocioDMChatPageState extends ConsumerState<SocioDMChatPage> {
+  final _controller = TextEditingController();
+  String? _conversationId;
+  late Future<List<Map<String, dynamic>>> _messages;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _conversationId = widget.recipientId;
+    _messages =
+        ref.read(customerRepositoryProvider).socialMessages(widget.recipientId);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return CustomerScaffold(
       title: 'Chat',
       showBack: true,
@@ -490,11 +682,12 @@ class SocioDMChatPage extends ConsumerWidget {
         children: [
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: ref
-                  .read(customerRepositoryProvider)
-                  .socialMessages(recipientId),
+              future: _messages,
               builder: (context, snapshot) {
                 final rows = snapshot.data ?? [];
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
                 if (rows.isEmpty) {
                   return const EmptyState(
                       icon: Icons.chat_bubble_rounded,
@@ -507,7 +700,9 @@ class SocioDMChatPage extends ConsumerWidget {
                         .map((m) => Align(
                             alignment: Alignment.centerLeft,
                             child: AppCard(
-                                child: Text(m.s('content', m.s('message'))))))
+                                child: Text(m.s(
+                                    'content',
+                                    m.s('message', m.s('contentText')))))))
                         .toList());
               },
             ),
@@ -519,12 +714,12 @@ class SocioDMChatPage extends ConsumerWidget {
                 children: [
                   Expanded(
                       child: TextField(
-                          controller: controller,
+                          controller: _controller,
                           decoration:
                               const InputDecoration(hintText: 'Message'))),
                   const SizedBox(width: 8),
                   IconButton.filled(
-                      onPressed: () => controller.clear(),
+                      onPressed: _sending ? null : _send,
                       icon: const Icon(Icons.send_rounded)),
                 ],
               ),
@@ -533,6 +728,37 @@ class SocioDMChatPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      var conversationId = _conversationId ?? widget.recipientId;
+      // Lists pass conversation id; profile Message may pass participant id.
+      try {
+        await ref
+            .read(customerRepositoryProvider)
+            .sendSocialMessage(conversationId, text);
+      } catch (_) {
+        conversationId = await ref
+            .read(customerRepositoryProvider)
+            .openSocialConversation(widget.recipientId);
+        _conversationId = conversationId;
+        await ref
+            .read(customerRepositoryProvider)
+            .sendSocialMessage(conversationId, text);
+      }
+      _controller.clear();
+      setState(() {
+        _messages = ref
+            .read(customerRepositoryProvider)
+            .socialMessages(conversationId);
+      });
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 }
 
@@ -549,14 +775,17 @@ class SocialNotificationsPage extends ConsumerWidget {
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: ref
             .read(customerRepositoryProvider)
-            .socialNotifications(auth.supabaseUid ?? auth.id),
+            .mergedNotifications(auth.supabaseUid ?? auth.id),
         builder: (context, snapshot) {
           final rows = snapshot.data ?? [];
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (rows.isEmpty) {
             return const EmptyState(
                 icon: Icons.notifications_rounded,
                 title: 'No notifications',
-                message: 'Social notifications will appear here.');
+                message: 'Notifications will appear here.');
           }
           return ListView(
               padding: const EdgeInsets.all(16),
@@ -564,11 +793,25 @@ class SocialNotificationsPage extends ConsumerWidget {
                   .map((n) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: AppCard(
+                          onTap: () async {
+                            final id = n.s('id');
+                            if (n.s('source') == 'system' && id.isNotEmpty) {
+                              await ref
+                                  .read(customerRepositoryProvider)
+                                  .markSystemNotificationRead(id);
+                            }
+                          },
                           child: ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.notifications_rounded),
-                              title: Text(n.s('message', n.s('type'))),
-                              subtitle: Text(shortDate(n['created_at']))))))
+                              leading: Icon(
+                                  n.s('source') == 'system'
+                                      ? Icons.campaign_rounded
+                                      : Icons.notifications_rounded,
+                                  color: AppColors.primary),
+                              title: Text(n.s(
+                                  'message', n.s('title', n.s('type')))),
+                              subtitle: Text(
+                                  '${n.s('source', 'social')} · ${shortDate(n['created_at'] ?? n['createdAt'])}')))))
                   .toList());
         },
       ),
@@ -576,14 +819,82 @@ class SocialNotificationsPage extends ConsumerWidget {
   }
 }
 
-class SocialReelsPage extends StatelessWidget {
+class SocialReelsPage extends ConsumerWidget {
   const SocialReelsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return CustomerScaffold(
       title: 'Reels',
-      icon: Icons.movie_rounded,
-      message: 'Short video reels from Socio creators.');
+      showBack: true,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: ref.read(customerRepositoryProvider).socialFeed(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final reels = (snapshot.data ?? []).where((post) {
+            final list = post['media_urls'];
+            final urls = list is List
+                ? list.map((e) => e.toString()).toList()
+                : <String>[];
+            return urls.any(isVideoUrl) ||
+                post.s('post_type') == 'video' ||
+                post.s('postType') == 'video' ||
+                post.s('media_type') == 'video';
+          }).toList();
+          if (reels.isEmpty) {
+            return const _SocialPlaceholder(
+                title: 'Reels',
+                icon: Icons.movie_rounded,
+                message: 'No reels yet. Video posts will appear here.');
+          }
+          return PageView.builder(
+            scrollDirection: Axis.vertical,
+            itemCount: reels.length,
+            itemBuilder: (context, index) {
+              final post = reels[index];
+              final list = post['media_urls'];
+              final urls = list is List
+                  ? list.map((e) => e.toString()).toList()
+                  : <String>[];
+              final url = urls.firstWhere(isVideoUrl,
+                  orElse: () => urls.isNotEmpty ? urls.first : '');
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  SocialVideo(url: url, height: double.infinity),
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 24,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(post.s('username', 'Planext user'),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 15)),
+                        if (post.s('caption', post.s('content')).isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(post.s('caption', post.s('content')),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white70)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }
 
 class SocialStoryViewerPage extends StatelessWidget {
@@ -853,12 +1164,16 @@ class _SocialQuickNav extends StatelessWidget {
   }
 }
 
-class _ProfileRow extends StatelessWidget {
+class _ProfileRow extends ConsumerWidget {
   const _ProfileRow({required this.profile});
   final Map<String, dynamic> profile;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userId = profile.s('user_id', profile.s('userId', profile.s('id')));
+    final following = profile['isFollowing'] == true ||
+        profile['following'] == true ||
+        profile['followed'] == true;
     return Row(
       children: [
         const CircleAvatar(
@@ -874,7 +1189,25 @@ class _ProfileRow extends StatelessWidget {
                 style: const TextStyle(color: AppColors.muted)),
           ]),
         ),
-        OutlinedButton(onPressed: () {}, child: const Text('Follow')),
+        OutlinedButton(
+          onPressed: userId.isEmpty
+              ? null
+              : () async {
+                  final repo = ref.read(customerRepositoryProvider);
+                  if (following) {
+                    await repo.unfollowSocialUser(userId);
+                  } else {
+                    await repo.followSocialUser(userId);
+                  }
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(following
+                            ? 'Unfollowed'
+                            : 'Following')));
+                  }
+                },
+          child: Text(following ? 'Following' : 'Follow'),
+        ),
       ],
     );
   }

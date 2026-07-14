@@ -42,7 +42,7 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
   Widget build(BuildContext context) {
     return CustomerScaffold(
       title: 'Find Home',
-      bottomNavIndex: 4,
+      showBack: true,
       actions: [
         IconButton(
             onPressed: () => context.push('/app/find-home/post'),

@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/utils/map_ext.dart';
+import '../../../core/utils/media_url.dart';
 import '../domain/customer_models.dart';
 import 'customer_api.dart';
 
@@ -40,9 +42,51 @@ class CustomerRepository {
 
   Future<List<Map<String, dynamic>>> browseProducts(
       {String? category, String? search, String? sort}) async {
-    final rows = await _gateway.browseProducts(
-        categoryId: category, query: search, sort: sort, limit: 50);
-    return rows.map(_normalizeProduct).toList();
+    final q = search?.trim() ?? '';
+    List<Map<String, dynamic>> rows;
+    if (q.isNotEmpty) {
+      // /browse/products ignores `q`/`sort`; catalog search is the search path.
+      rows = await _gateway.searchCatalog(query: q, type: 'product', limit: 50);
+    } else {
+      rows = await _gateway.browseProducts(
+          categoryId: category, limit: 50);
+    }
+    var products = rows.map(_normalizeProduct).toList();
+    if (q.isNotEmpty && category != null && category.isNotEmpty) {
+      products = products
+          .where((p) =>
+              p.s('category_id', p.s('categoryId')) == category ||
+              p.s('category_name', p.s('categoryName'))
+                  .toLowerCase()
+                  .contains(category.toLowerCase()))
+          .toList();
+    }
+    return _sortProducts(products, sort);
+  }
+
+  List<Map<String, dynamic>> _sortProducts(
+      List<Map<String, dynamic>> products, String? sort) {
+    final copy = [...products];
+    switch (sort) {
+      case 'price_low':
+        copy.sort((a, b) => a.n('price').compareTo(b.n('price')));
+      case 'price_high':
+        copy.sort((a, b) => b.n('price').compareTo(a.n('price')));
+      case 'rating':
+        copy.sort((a, b) => b
+            .n('rating', b.n('avgRating'))
+            .compareTo(a.n('rating', a.n('avgRating'))));
+      case 'latest':
+      default:
+        copy.sort((a, b) {
+          final ad = DateTime.tryParse(a.s('created_at', a.s('createdAt'))) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final bd = DateTime.tryParse(b.s('created_at', b.s('createdAt'))) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          return bd.compareTo(ad);
+        });
+    }
+    return copy;
   }
 
   Future<Map<String, dynamic>?> product(String id) async {
@@ -83,7 +127,8 @@ class CustomerRepository {
     required Map<String, dynamic> service,
     required DateTime date,
     required String timeSlot,
-    required String address,
+    required String addressId,
+    String? addressLabel,
     String? notes,
   }) async {
     await _gateway.createServiceBooking(
@@ -92,11 +137,23 @@ class CustomerRepository {
         'serviceId': service.s('id', service.s('serviceId')),
         'bookingDate': date.toIso8601String().split('T').first,
         'timeSlot': timeSlot,
-        'address': address,
+        'addressId': addressId,
+        if (addressLabel != null && addressLabel.isNotEmpty)
+          'address': addressLabel,
         'notes': notes,
         'totalAmount': service.n('price').toStringAsFixed(2),
       },
     );
+  }
+
+  Future<List<Map<String, dynamic>>> availableSlots({
+    String? vendorId,
+    String? serviceId,
+    String? date,
+  }) async {
+    if (!await apiSession.hasToken()) return [];
+    return _gateway.availableSlots(
+        vendorId: vendorId, serviceId: serviceId, date: date);
   }
 
   Future<Map<String, dynamic>?> vendor(String id) async {
@@ -112,8 +169,13 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> orders(String customerId) async {
     if (!await apiSession.hasToken()) return [];
     final id = await apiSession.customerId() ?? customerId;
-    final rows = await _gateway.customerOrders(id);
-    return rows.map(_normalizeOrder).toList();
+    if (id.isEmpty) return [];
+    try {
+      final rows = await _gateway.customerOrders(id);
+      return rows.map(_normalizeOrder).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> bookings(String customerId) async {
@@ -126,67 +188,104 @@ class CustomerRepository {
     await _gateway.cancelBooking(bookingId);
   }
 
+  Future<void> cancelOrder(String orderId) async {
+    await _gateway.cancelOrder(orderId);
+  }
+
   Future<Map<String, dynamic>?> order(String id) async {
     final data = await _gateway.order(id);
     return _normalizeOrder(data);
   }
 
-  Future<void> placeOrder({
-    required String customerId,
-    required CartSummary summary,
-    required Map<String, dynamic>? address,
-    String paymentMode = 'cod',
-  }) async {
-    if (summary.items.isEmpty) throw const ApiException('Cart is empty.');
-    if (await apiSession.hasToken()) {
-      await _gateway.createOrderFromCart(
-        redeemPoints: summary.pointsUsed,
-        vendorId:
-            summary.items.length == 1 ? summary.items.first.vendorId : null,
-      );
-    } else {
-      await _gateway.createDirectOrder({
-        'items': summary.items
-            .map((item) => {
-                  'productId': item.productId,
-                  'quantity': item.qty,
-                  'price': item.price,
-                  'vendorId': item.vendorId,
-                  'metadata': {
-                    'productName': item.title,
-                    'variantId': item.variantId
-                  },
-                })
-            .toList(),
-        'addressId': address?.s('id'),
-        'address': address,
-        'paymentMode': paymentMode,
-        'redeemPoints': summary.pointsUsed,
-      });
-    }
-    await clearCart();
-  }
-
   Future<Map<String, dynamic>?> profile(String customerId) async {
     if (!await apiSession.hasToken()) return null;
     final data = await _gateway.myProfile();
-    final profile =
-        apiObject(data['profile'] ?? data['customer'] ?? data['user'] ?? data);
-    if (profile != null) await apiSession.saveProfile(profile);
+    final raw = apiObject(data['profile'] ??
+            data['customer'] ??
+            data['user'] ??
+            data['data'] ??
+            data) ??
+        data;
+    final profile = _normalizeProfile(raw);
+    // Persist customer id from profile when session is missing it.
+    final pid = profile.s('id', profile.s('customerId'));
+    if (pid.isNotEmpty) {
+      final prefsId = await apiSession.customerId();
+      if (prefsId == null || prefsId.isEmpty) {
+        await apiSession.setCustomerId(pid);
+      }
+    }
+    await apiSession.saveProfile(profile);
     return profile;
   }
 
   Future<Map<String, dynamic>> profileWithStats(String customerId) async {
     final customer = await profile(customerId) ?? {};
-    final orderCount = await orders(customerId);
-    final addresses = await customerAddresses(customerId);
-    final reward = await rewardPoints(customerId);
+    var orderCount = 0;
+    var addressCount = 0;
+    var adsCount = 0;
+    num points = 0;
+    try {
+      orderCount = (await orders(customerId)).length;
+    } catch (_) {}
+    try {
+      addressCount = (await customerAddresses(customerId)).length;
+    } catch (_) {}
+    try {
+      adsCount = (await classifieds()).length;
+    } catch (_) {}
+    try {
+      final wallet = await _gateway.walletSummary();
+      final walletObj = apiObject(wallet) ?? wallet;
+      points = walletObj.n('displayAmount',
+          walletObj.n('balance', walletObj.n('points')));
+    } catch (_) {}
+    if (points == 0) {
+      try {
+        final reward = await rewardPoints(customerId);
+        points = reward.n(
+            'displayAmount', reward.n('balance', reward.n('points')));
+      } catch (_) {}
+    }
     return {
       ...customer,
-      'total_orders': orderCount.length,
-      'saved_addresses': addresses.length,
-      'wallet_points':
-          reward['displayAmount'] ?? reward['balance'] ?? reward['points'] ?? 0,
+      'total_orders': orderCount,
+      'saved_addresses': addressCount,
+      'total_ads': adsCount,
+      'wallet_points': points.round(),
+    };
+  }
+
+  Map<String, dynamic> _normalizeProfile(Map<String, dynamic> row) {
+    final meta = row['metadata'] is Map
+        ? Map<String, dynamic>.from(row['metadata'] as Map)
+        : <String, dynamic>{};
+    final name = row.s('fullName', row.s('name', row.s('displayName')));
+    final phone = row.s('phone', row.s('mobile'));
+    final dob = row.s('dob', meta.s('dob'));
+    final gender = row.s('gender', meta.s('gender'));
+    final avatar = meta.s('avatarUrl',
+        meta.s('avatar', row.s('avatarUrl', row.s('avatar'))));
+    return {
+      ...row,
+      'id': row.s('id', row.s('customerId')),
+      'name': name,
+      'fullName': name,
+      'email': row.s('email'),
+      'phone': phone,
+      'mobile': phone,
+      'dob': dob,
+      'gender': gender,
+      'occupationId': row.s('occupationId', row.s('occupation_id')),
+      'metadata': {
+        ...meta,
+        if (dob.isNotEmpty) 'dob': dob,
+        if (gender.isNotEmpty) 'gender': gender,
+        if (avatar.isNotEmpty) 'avatarUrl': resolveMediaUrl(avatar),
+        if (avatar.isNotEmpty) 'avatar': resolveMediaUrl(avatar),
+      },
+      'avatarUrl': avatar.isEmpty ? '' : resolveMediaUrl(avatar),
+      'avatar': avatar.isEmpty ? '' : resolveMediaUrl(avatar),
     };
   }
 
@@ -219,6 +318,31 @@ class CustomerRepository {
     };
     final updated = await _gateway.updateMyProfile(payload);
     await apiSession.saveProfile(apiObject(updated) ?? updated);
+  }
+
+  /// Public occupation options for the profile form (same source as user web:
+  /// GET /api/auth/public/occupations?purpose=all).
+  Future<List<Map<String, dynamic>>> occupations() async {
+    final rows = await _gateway.occupations(purpose: 'all');
+    return rows
+        .map((row) => {
+              'id': row.s('id'),
+              'name': row.s('name'),
+            })
+        .where((row) => (row['id'] as String).isNotEmpty)
+        .toList();
+  }
+
+  /// Uploads a profile photo and returns an absolute URL (same upload endpoint
+  /// the web uses for avatars: POST /api/v1/social/upload).
+  Future<String> uploadAvatar(File file) async {
+    final data = await _gateway.uploadSocialMedia(file);
+    final raw = data.s('url',
+        data.s('fileUrl', data.s('file_url', data.s('path', data.s('publicUrl')))));
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('http') || raw.startsWith('assets/')) return raw;
+    final normalized = raw.startsWith('/') ? raw : '/$raw';
+    return '${ApiClient.baseUrl}$normalized';
   }
 
   Future<List<Map<String, dynamic>>> customerAddresses(
@@ -302,6 +426,8 @@ class CustomerRepository {
           : <String, dynamic>{}),
       'documentNumber':
           payload.s('document_number', payload.s('documentNumber')),
+      if (payload.s('url', payload.s('fileUrl')).isNotEmpty)
+        'url': payload.s('url', payload.s('fileUrl')),
       'status': 'submitted',
       'submittedAt': DateTime.now().toIso8601String(),
     };
@@ -311,8 +437,13 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> classifieds(
       {String? category, String? search}) async {
     final rows = await _gateway.classifiedContent(
-        category: category, query: search, limit: 50);
+        categoryId: category, query: search, limit: 50);
     return rows.map(_normalizeClassified).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> classifiedCategories() async {
+    final rows = await _gateway.classifiedCategories();
+    return rows.map(_normalizeCategory).toList();
   }
 
   Future<Map<String, dynamic>?> classified(String id) async {
@@ -514,6 +645,42 @@ class CustomerRepository {
     return _gateway.conversationMessages(conversationId);
   }
 
+  Future<void> likeSocialPost(String postId) => _gateway.likePost(postId);
+  Future<void> unlikeSocialPost(String postId) => _gateway.unlikePost(postId);
+  Future<void> saveSocialPost(String postId) => _gateway.savePost(postId);
+  Future<void> unsaveSocialPost(String postId) => _gateway.unsavePost(postId);
+  Future<void> shareSocialPost(String postId) => _gateway.sharePost(postId);
+  Future<void> followSocialUser(String userId) => _gateway.followUser(userId);
+  Future<void> unfollowSocialUser(String userId) =>
+      _gateway.unfollowUser(userId);
+
+  Future<void> createSocialComment(String postId, String content) async {
+    await _gateway.createComment(postId, {
+      'content': content,
+      'contentText': content,
+      'body': content,
+    });
+  }
+
+  Future<String> openSocialConversation(String participantId) async {
+    final row = await _gateway.openConversation(participantId);
+    return row.s('id', row.s('conversationId'));
+  }
+
+  Future<void> sendSocialMessage(String conversationId, String content) async {
+    await _gateway.sendMessage(conversationId, {
+      'content': content,
+      'contentText': content,
+      'body': content,
+      'message': content,
+    });
+  }
+
+  Future<String> uploadSocialFile(File file) async {
+    final data = await _gateway.uploadSocialMedia(file);
+    return data.s('url', data.s('fileUrl', data.s('path')));
+  }
+
   Future<void> accountDeletionRequest(String customerId) async {
     await _updateProfileMetadata(customerId, {
       'accountDeletionRequest': {
@@ -628,26 +795,174 @@ class CustomerRepository {
     }
   }
 
-  Future<CartSummary> cartSummary({int pointsUsed = 0}) async {
+  Future<CartSummary> cartSummary({int pointsUsed = 0, num couponDiscount = 0}) async {
     final items = await cartItems();
     final subtotal =
         items.fold<num>(0, (sum, item) => sum + item.price * item.qty);
     final tax = items.fold<num>(0, (sum, item) => sum + item.tax * item.qty);
     final discount =
         items.fold<num>(0, (sum, item) => sum + item.discount * item.qty);
-    var platformFee = 0;
-    if (await apiSession.hasToken()) {
+    var platformFee = 0.0;
+    var deliveryFee = 0.0;
+    var gstOnPlatformFee = 0.0;
+    var surgeCost = 0.0;
+    var pointsRedeemedValue = 0.0;
+    var walletBalanceBefore = 0.0;
+    var maxRedeemableValue = 0.0;
+    var meetsMinCart = true;
+    num? grandTotal;
+    if (await apiSession.hasToken() && items.isNotEmpty) {
       final quote = await _gateway.quoteCart(redeemPoints: pointsUsed);
-      platformFee = quote.i('platformFee', quote.i('platform_fee'));
+      platformFee =
+          quote.n('platformFee', quote.n('platform_fee')).toDouble();
+      deliveryFee =
+          quote.n('deliveryFee', quote.n('delivery_fee')).toDouble();
+      gstOnPlatformFee = quote
+          .n('gstOnPlatformFee', quote.n('gst_on_platform_fee'))
+          .toDouble();
+      surgeCost = quote.n('surgeCost', quote.n('surge_cost')).toDouble();
+      pointsRedeemedValue = quote
+          .n('pointsRedeemedValue', quote.n('points_redeemed_value'))
+          .toDouble();
+      walletBalanceBefore = quote
+          .n('walletBalanceBefore', quote.n('wallet_balance_before'))
+          .toDouble();
+      maxRedeemableValue = quote
+          .n('maxRedeemableValue', quote.n('max_redeemable_value'))
+          .toDouble();
+      meetsMinCart = quote['meetsMinCart'] != false;
+      final gt = quote['grandTotal'] ?? quote['grand_total'];
+      if (gt != null) {
+        grandTotal = quote.n('grandTotal', quote.n('grand_total')) -
+            couponDiscount;
+        if (grandTotal < 0) grandTotal = 0;
+      }
     }
     return CartSummary(
-        items: items,
-        subtotal: subtotal,
-        tax: tax,
-        discount: discount,
-        platformFee: platformFee,
-        pointsUsed: pointsUsed);
+      items: items,
+      subtotal: subtotal,
+      tax: tax,
+      discount: discount,
+      platformFee: platformFee,
+      pointsUsed: pointsUsed,
+      deliveryFee: deliveryFee,
+      gstOnPlatformFee: gstOnPlatformFee,
+      surgeCost: surgeCost,
+      pointsRedeemedValue: pointsRedeemedValue,
+      couponDiscount: couponDiscount,
+      grandTotal: grandTotal,
+      walletBalanceBefore: walletBalanceBefore,
+      maxRedeemableValue: maxRedeemableValue,
+      meetsMinCart: meetsMinCart,
+    );
   }
+
+  Future<num> validateCouponCode(String code, num cartTotal) async {
+    final result = await _gateway.validateCoupon({
+      'code': code.trim(),
+      'cartTotal': cartTotal,
+    });
+    final discount = result.n('discount', result.n('discountAmount'));
+    if (discount > 0) return discount;
+    if (result['valid'] == false) {
+      throw ApiException(result.s('message', 'Invalid coupon'));
+    }
+    return result.n('discountValue', result.n('amount'));
+  }
+
+  /// Places order and returns the created order map (with `id`).
+  Future<Map<String, dynamic>> placeOrder({
+    required String customerId,
+    required CartSummary summary,
+    required Map<String, dynamic>? address,
+    String paymentMode = 'cod',
+  }) async {
+    if (summary.items.isEmpty) throw const ApiException('Cart is empty.');
+    Map<String, dynamic> order;
+    if (await apiSession.hasToken()) {
+      order = await _gateway.createOrderFromCart(
+        redeemPoints: summary.pointsUsed,
+        vendorId:
+            summary.items.length == 1 ? summary.items.first.vendorId : null,
+      );
+    } else {
+      order = await _gateway.createDirectOrder({
+        'items': summary.items
+            .map((item) => {
+                  'productId': item.productId,
+                  'quantity': item.qty,
+                  'price': item.price,
+                  'vendorId': item.vendorId,
+                  'metadata': {
+                    'productName': item.title,
+                    'variantId': item.variantId
+                  },
+                })
+            .toList(),
+        'addressId': address?.s('id'),
+        'address': address,
+        'paymentMode': paymentMode,
+        'redeemPoints': summary.pointsUsed,
+      });
+    }
+    if (paymentMode == 'cod') {
+      await clearCart();
+    }
+    return _normalizeOrder(order);
+  }
+
+  Future<Map<String, dynamic>> createPaymentIntentForOrder({
+    required String orderId,
+    required num amount,
+  }) =>
+      _gateway.createPaymentIntent({
+        'orderId': orderId,
+        'amount': amount.toStringAsFixed(2),
+        'currency': 'INR',
+      });
+
+  Future<Map<String, dynamic>> verifyPaymentPayload(
+          Map<String, dynamic> body) =>
+      _gateway.verifyPayment(body);
+
+  Future<Map<String, dynamic>> paymentIntentStatus(String intentId) =>
+      _gateway.paymentIntent(intentId);
+
+  Future<void> clearCartAfterPaid() => clearCart();
+
+  Future<Map<String, dynamic>?> myReferralCode() async {
+    if (!await apiSession.hasToken()) return null;
+    return _gateway.referralCode();
+  }
+
+  Future<List<Map<String, dynamic>>> productReviews(String productId) async {
+    return _gateway.reviews(targetType: 'product', targetId: productId);
+  }
+
+  Future<Map<String, dynamic>> productReviewSummary(String productId) async {
+    return _gateway.reviewSummary(targetType: 'product', targetId: productId);
+  }
+
+  Future<List<Map<String, dynamic>>> mergedNotifications(String userId) async {
+    if (!await apiSession.hasToken()) return [];
+    final system = await _gateway.notifications();
+    final social = await _gateway.socialNotifications();
+    final rows = <Map<String, dynamic>>[
+      ...system.map((n) => {...n, 'source': 'system'}),
+      ...social.map((n) => {...n, 'source': 'social'}),
+    ];
+    rows.sort((a, b) {
+      final ad = DateTime.tryParse(a.s('created_at', a.s('createdAt'))) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final bd = DateTime.tryParse(b.s('created_at', b.s('createdAt'))) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      return bd.compareTo(ad);
+    });
+    return rows;
+  }
+
+  Future<void> markSystemNotificationRead(String id) =>
+      _gateway.markNotificationRead(id);
 
   Future<Set<String>> wishlist() async {
     if (await apiSession.hasToken()) {
@@ -820,66 +1135,6 @@ class CustomerRepository {
     };
   }
 
-  Map<String, dynamic> _normalizeClassified(Map<String, dynamic> row) => {
-        ...row,
-        'id': row.s('id', row.s('classifiedId')),
-        'title': row.s('title', row.s('name')),
-        'price': row.n('price', row.n('amount')),
-        'image': _imageFrom(row, const [
-          'image',
-          'imageUrl',
-          'image_url',
-          'thumbnailUrl',
-          'thumbnail_url',
-          'coverImage',
-          'cover_image',
-          'mediaUrls',
-          'media_urls',
-          'images',
-          'attachments'
-        ]),
-      };
-
-  Map<String, dynamic> _normalizeSocialPost(Map<String, dynamic> row) {
-    final author = row['author'] is Map
-        ? Map<String, dynamic>.from(row['author'] as Map)
-        : row['user'] is Map
-            ? Map<String, dynamic>.from(row['user'] as Map)
-            : <String, dynamic>{};
-    final media = _mediaList(row);
-    return {
-      ...row,
-      'id': row.s('id', row.s('postId')),
-      'user_id': row.s('user_id', row.s('userId', author.s('id'))),
-      'username': row.s(
-          'username',
-          row.s(
-              'userName',
-              row.s('authorName',
-                  author.s('name', author.s('username', 'Planext user'))))),
-      'caption': row.s(
-          'caption', row.s('content', row.s('contentText', row.s('body')))),
-      'created_at': row.s('created_at', row.s('createdAt')),
-      'media_urls': media,
-      'image_url': media.isNotEmpty
-          ? media.first
-          : _imageFrom(row,
-              const ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
-      'likes_count':
-          row.i('likes_count', row.i('like_count', row.i('likesCount'))),
-      'comments_count': row.i(
-          'comments_count', row.i('comment_count', row.i('commentsCount'))),
-    };
-  }
-
-  Map<String, dynamic> _normalizeVendor(Map<String, dynamic> row) => {
-        ...row,
-        'id': row.s('id', row.s('vendorId')),
-        'business_name': row.s('business_name', row.s('businessName')),
-        'name': row.s('name', row.s('ownerName')),
-        'mobile': row.s('mobile', row.s('phone')),
-      };
-
   Map<String, dynamic> _normalizeCategory(Map<String, dynamic> row) => {
         ...row,
         'id': row.s('id', row.s('categoryId')),
@@ -895,13 +1150,182 @@ class CustomerRepository {
         ]),
       };
 
-  Map<String, dynamic> _normalizeOrder(Map<String, dynamic> row) => {
-        ...row,
-        'id': row.s('id', row.s('orderId')),
-        'total': row.n('total', row.n('totalAmount', row.n('grandTotal'))),
-        'created_at': row.s('created_at', row.s('createdAt')),
-        'payment_status': row.s('payment_status', row.s('paymentStatus')),
-      };
+  Map<String, dynamic> _normalizeClassified(Map<String, dynamic> row) {
+    final meta = row['metadata'] is Map
+        ? Map<String, dynamic>.from(row['metadata'] as Map)
+        : <String, dynamic>{};
+    return {
+      ...row,
+      'id': row.s('id', row.s('classifiedId')),
+      'title': row.s('title', row.s('name')),
+      'price': row.n('price', row.n('amount')),
+      'contactPhone': row.s(
+          'contactPhone',
+          row.s('contact_phone',
+              row.s('phone', row.s('mobile', meta.s('contactPhone'))))),
+      'image': _imageFrom(row, const [
+        'image',
+        'imageUrl',
+        'image_url',
+        'thumbnailUrl',
+        'thumbnail_url',
+        'coverImage',
+        'cover_image',
+        'mediaUrls',
+        'media_urls',
+        'images',
+        'attachments'
+      ]),
+    };
+  }
+
+  Map<String, dynamic> _normalizeSocialPost(Map<String, dynamic> row) {
+    final author = row['author'] is Map
+        ? Map<String, dynamic>.from(row['author'] as Map)
+        : row['user'] is Map
+            ? Map<String, dynamic>.from(row['user'] as Map)
+            : <String, dynamic>{};
+    final media = _mediaList(row).map(resolveMediaUrl).where((u) => u.isNotEmpty).toList();
+    final postType =
+        row.s('post_type', row.s('postType', row.s('media_type', row.s('mediaType'))));
+    return {
+      ...row,
+      'id': row.s('id', row.s('postId')),
+      'user_id': row.s('user_id', row.s('userId', author.s('id'))),
+      'username': row.s(
+          'username',
+          row.s(
+              'userName',
+              row.s('authorName',
+                  author.s('name', author.s('username', 'Planext user'))))),
+      'caption': row.s(
+          'caption', row.s('content', row.s('contentText', row.s('body')))),
+      'created_at': row.s('created_at', row.s('createdAt')),
+      'post_type': postType,
+      'postType': postType,
+      'media_type': row.s('media_type', row.s('mediaType')),
+      'media_urls': media,
+      'image_url': media.isNotEmpty
+          ? media.first
+          : resolveMediaUrl(_imageFrom(row, const [
+              'imageUrl',
+              'image_url',
+              'thumbnailUrl',
+              'thumbnail_url'
+            ])),
+      'likes_count':
+          row.i('likes_count', row.i('like_count', row.i('likesCount'))),
+      'comments_count': row.i(
+          'comments_count', row.i('comment_count', row.i('commentsCount'))),
+      'liked': row['liked'] == true ||
+          row['isLiked'] == true ||
+          row['hasLiked'] == true,
+      'saved': row['saved'] == true ||
+          row['isSaved'] == true ||
+          row['hasSaved'] == true,
+    };
+  }
+
+  Map<String, dynamic> _normalizeOrder(Map<String, dynamic> row) {
+    final meta = row['metadata'] is Map
+        ? Map<String, dynamic>.from(row['metadata'] as Map)
+        : <String, dynamic>{};
+    var items = row['items'];
+    if (items is! List || items.isEmpty) {
+      items = meta['lines'] ?? meta['items'];
+    }
+    final normalizedItems = <Map<String, dynamic>>[];
+    if (items is List) {
+      for (final raw in items) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final itemMeta = item['metadata'] is Map
+            ? Map<String, dynamic>.from(item['metadata'] as Map)
+            : <String, dynamic>{};
+        normalizedItems.add({
+          ...item,
+          'title': item.s(
+              'title',
+              item.s('name',
+                  item.s('productName', itemMeta.s('productName', 'Item')))),
+          'qty': item.i('qty', item.i('quantity', 1)),
+          'price': item.n('price', item.n('unitPrice', item.n('sellPrice'))),
+        });
+      }
+    }
+    return {
+      ...row,
+      'id': row.s('id', row.s('orderId')),
+      'total': row.n('total', row.n('totalAmount', row.n('grandTotal'))),
+      'created_at': row.s('created_at', row.s('createdAt')),
+      'payment_status': row.s('payment_status', row.s('paymentStatus')),
+      'payment_ref': row.s(
+          'payment_ref',
+          row.s('paymentRefId',
+              row.s('paymentReferenceId', row.s('paymentId')))),
+      'vendor_id': row.s('vendor_id', row.s('vendorId', meta.s('vendorId'))),
+      'vendor_name': () {
+        final direct =
+            row.s('vendor_name', row.s('vendorName', meta.s('vendorName')));
+        if (direct.isNotEmpty) return direct;
+        final lines = meta['lines'];
+        if (lines is List && lines.isNotEmpty && lines.first is Map) {
+          final lm = Map<String, dynamic>.from(lines.first as Map);
+          final lmeta = lm['metadata'] is Map
+              ? Map<String, dynamic>.from(lm['metadata'] as Map)
+              : <String, dynamic>{};
+          return lmeta.s('vendorName');
+        }
+        return '';
+      }(),
+      'items': normalizedItems,
+      'delivery_fee':
+          row.n('delivery_fee', row.n('deliveryFee', meta.n('deliveryFee'))),
+      'platform_fee':
+          row.n('platform_fee', row.n('platformFee', meta.n('platformFee'))),
+      'gst': row.n('gst', row.n('gstOnPlatformFee', meta.n('gstOnPlatformFee'))),
+      'subtotal':
+          row.n('subtotal', row.n('itemSubtotal', meta.n('itemSubtotal'))),
+    };
+  }
+
+  Map<String, dynamic> _normalizeVendor(Map<String, dynamic> row) {
+    final banners = <String>[];
+    for (final key in const ['banners', 'bannerUrls', 'banner_urls']) {
+      final raw = row[key];
+      if (raw is List) {
+        for (final e in raw) {
+          final url = e is Map
+              ? (e['url'] ?? e['imageUrl'] ?? e['image'] ?? '').toString()
+              : e.toString();
+          if (url.isNotEmpty) banners.add(url);
+        }
+      }
+    }
+    final banner = _imageFrom(row, const [
+      'banner',
+      'bannerUrl',
+      'banner_url',
+      'coverImage',
+      'cover_image',
+      'background_image'
+    ]);
+    if (banner.isNotEmpty && !banners.contains(banner)) {
+      banners.insert(0, banner);
+    }
+    return {
+      ...row,
+      'id': row.s('id', row.s('vendorId')),
+      'business_name': row.s('business_name', row.s('businessName')),
+      'name': row.s('name', row.s('ownerName')),
+      'mobile': row.s('mobile', row.s('phone')),
+      'email': row.s('email'),
+      'rating': row.n('rating', row.n('avgRating', row.n('averageRating'))),
+      'logo': _imageFrom(
+          row, const ['logo', 'logoUrl', 'thumbnailUrl', 'thumbnail_url']),
+      'banners': banners,
+    };
+  }
 
   Map<String, dynamic> _normalizeBooking(Map<String, dynamic> row) => {
         ...row,

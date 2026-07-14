@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
@@ -112,9 +116,65 @@ class CustomerServiceDetailPage extends ConsumerStatefulWidget {
 class _CustomerServiceDetailPageState
     extends ConsumerState<CustomerServiceDetailPage> {
   DateTime _date = DateTime.now().add(const Duration(days: 1));
-  String _slot = '10:00 AM - 12:00 PM';
-  final _address = TextEditingController();
+  String? _slot;
+  String? _addressId;
+  List<String> _slots = const [];
+  List<Map<String, dynamic>> _addresses = const [];
   final _notes = TextEditingController();
+  bool _loadingSlots = false;
+  bool _bootstrapped = false;
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrap(Map<String, dynamic> service) async {
+    if (_bootstrapped) return;
+    _bootstrapped = true;
+    final auth = ref.read(customerAuthStateProvider).valueOrNull;
+    if (auth != null) {
+      final rows =
+          await ref.read(customerRepositoryProvider).customerAddresses(auth.id);
+      if (mounted) {
+        setState(() {
+          _addresses = rows;
+          if (_addressId == null && rows.isNotEmpty) {
+            _addressId = rows.first.s('id', rows.first.s('addressId'));
+          }
+        });
+      }
+    }
+    await _loadSlots(service);
+  }
+
+  Future<void> _loadSlots(Map<String, dynamic> service) async {
+    setState(() => _loadingSlots = true);
+    try {
+      final date = _date.toIso8601String().split('T').first;
+      final rows = await ref.read(customerRepositoryProvider).availableSlots(
+            vendorId: service.s('vendor_id', service.s('vendorId')),
+            serviceId: service.s('id', service.s('serviceId')),
+            date: date,
+          );
+      final slots = <String>[];
+      for (final row in rows) {
+        final label = row.s('label',
+            row.s('timeSlot', row.s('slot', row.s('start', row.s('time')))));
+        if (label.isNotEmpty) slots.add(label);
+      }
+      if (!mounted) return;
+      setState(() {
+        _slots = slots;
+        if (_slot == null || !slots.contains(_slot)) {
+          _slot = slots.isNotEmpty ? slots.first : null;
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _loadingSlots = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +195,8 @@ class _CustomerServiceDetailPageState
                 title: 'Service not found',
                 message: 'This service is unavailable.');
           }
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _bootstrap(service));
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -174,36 +236,71 @@ class _CustomerServiceDetailPageState
                             lastDate:
                                 DateTime.now().add(const Duration(days: 60)),
                             initialDate: _date);
-                        if (picked != null) setState(() => _date = picked);
+                        if (picked != null) {
+                          setState(() {
+                            _date = picked;
+                            _slot = null;
+                            _slots = const [];
+                          });
+                          await _loadSlots(service);
+                        }
                       },
                     ),
-                    DropdownButtonFormField<String>(
-                      initialValue: _slot,
-                      decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.schedule_rounded),
-                          hintText: 'Time Slot'),
-                      items: const [
-                        DropdownMenuItem(
-                            value: '10:00 AM - 12:00 PM',
-                            child: Text('10:00 AM - 12:00 PM')),
-                        DropdownMenuItem(
-                            value: '12:00 PM - 02:00 PM',
-                            child: Text('12:00 PM - 02:00 PM')),
-                        DropdownMenuItem(
-                            value: '03:00 PM - 05:00 PM',
-                            child: Text('03:00 PM - 05:00 PM')),
-                      ],
-                      onChanged: (value) =>
-                          setState(() => _slot = value ?? _slot),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                        controller: _address,
-                        minLines: 2,
-                        maxLines: 3,
+                    if (_loadingSlots)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: LinearProgressIndicator(),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('slot-${_slots.join('|')}'),
+                        initialValue: _slots.contains(_slot) ? _slot : null,
                         decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.location_on_rounded),
-                            hintText: 'Service address')),
+                            prefixIcon: Icon(Icons.schedule_rounded),
+                            hintText: 'Time Slot'),
+                        items: _slots
+                            .map((s) =>
+                                DropdownMenuItem(value: s, child: Text(s)))
+                            .toList(),
+                        onChanged: (value) => setState(() => _slot = value),
+                      ),
+                    if (_slots.isEmpty && !_loadingSlots)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('No slots available for this date.',
+                            style: TextStyle(color: AppColors.muted)),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(
+                          'addr-${_addresses.length}-$_addressId'),
+                      initialValue: _addresses.any((a) =>
+                              a.s('id', a.s('addressId')) == _addressId)
+                          ? _addressId
+                          : null,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.location_on_rounded),
+                          hintText: 'Service address'),
+                      items: _addresses
+                          .map((a) => DropdownMenuItem(
+                                value: a.s('id', a.s('addressId')),
+                                child: Text(
+                                  a.s(
+                                      'label',
+                                      a.s('addressLine1',
+                                          a.s('line1', a.s('address')))),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ))
+                          .toList(),
+                      onChanged: (value) => setState(() => _addressId = value),
+                    ),
+                    if (_addresses.isEmpty && auth != null)
+                      TextButton(
+                        onPressed: () => context.push('/app/profile'),
+                        child: const Text('Add an address'),
+                      ),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _notes,
@@ -215,15 +312,33 @@ class _CustomerServiceDetailPageState
                       onPressed: auth == null
                           ? () => context.push('/app/login')
                           : () async {
+                              if ((_slot ?? '').isEmpty ||
+                                  (_addressId ?? '').isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Select a time slot and address')));
+                                return;
+                              }
+                              final addr = _addresses.firstWhere(
+                                (a) =>
+                                    a.s('id', a.s('addressId')) == _addressId,
+                                orElse: () => <String, dynamic>{},
+                              );
                               await ref
                                   .read(customerRepositoryProvider)
                                   .bookService(
-                                      customerId: auth.id,
-                                      service: service,
-                                      date: _date,
-                                      timeSlot: _slot,
-                                      address: _address.text.trim(),
-                                      notes: _notes.text.trim());
+                                    customerId: auth.id,
+                                    service: service,
+                                    date: _date,
+                                    timeSlot: _slot!,
+                                    addressId: _addressId!,
+                                    addressLabel: addr.s(
+                                        'label',
+                                        addr.s('addressLine1',
+                                            addr.s('address'))),
+                                    notes: _notes.text.trim(),
+                                  );
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -296,7 +411,7 @@ class _CustomerClassifiedsPageState
   Widget build(BuildContext context) {
     return CustomerScaffold(
       title: 'Classifieds',
-      bottomNavIndex: 5,
+      bottomNavIndex: 4,
       actions: [
         IconButton(
             onPressed: () => context.push('/app/classifieds/post'),
@@ -393,7 +508,27 @@ class CustomerClassifiedDetailPage extends ConsumerWidget {
               Text(ad.s('description')),
               const SizedBox(height: 14),
               FilledButton.icon(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final phone = ad
+                        .s('contactPhone', ad.s('phone', ad.s('mobile')))
+                        .replaceAll(RegExp(r'[^\d+]'), '');
+                    if (phone.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Seller phone not available')));
+                      return;
+                    }
+                    final digits = phone.replaceAll(RegExp(r'\D'), '');
+                    final uri = Uri.parse('https://wa.me/$digits');
+                    if (!await launchUrl(uri,
+                        mode: LaunchMode.externalApplication)) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Could not open WhatsApp')));
+                      }
+                    }
+                  },
                   icon: const Icon(Icons.call_rounded),
                   label: const Text('Contact Seller')),
             ],
@@ -413,10 +548,59 @@ class CustomerPostAdPage extends ConsumerStatefulWidget {
 
 class _CustomerPostAdPageState extends ConsumerState<CustomerPostAdPage> {
   final _title = TextEditingController();
-  final _category = TextEditingController();
   final _price = TextEditingController();
   final _location = TextEditingController();
   final _description = TextEditingController();
+  final _phone = TextEditingController();
+  String? _categoryId;
+  List<Map<String, dynamic>> _categories = const [];
+  final List<String> _imageUrls = [];
+  bool _uploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    final rows =
+        await ref.read(customerRepositoryProvider).classifiedCategories();
+    if (!mounted) return;
+    setState(() {
+      _categories = rows;
+      if (_categoryId == null && rows.isNotEmpty) {
+        _categoryId = rows.first.s('id');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _price.dispose();
+    _location.dispose();
+    _description.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    final picked = await ImagePicker().pickMultiImage(imageQuality: 85);
+    if (picked.isEmpty) return;
+    setState(() => _uploading = true);
+    try {
+      for (final file in picked) {
+        final url = await ref
+            .read(customerRepositoryProvider)
+            .uploadSocialFile(File(file.path));
+        if (url.isNotEmpty) _imageUrls.add(url);
+      }
+      if (mounted) setState(() {});
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -437,11 +621,29 @@ class _CustomerPostAdPageState extends ConsumerState<CustomerPostAdPage> {
                         prefixIcon: Icon(Icons.title_rounded),
                         hintText: 'Title')),
                 const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('cat-${_categories.length}-$_categoryId'),
+                  initialValue: _categories.any((c) => c.s('id') == _categoryId)
+                      ? _categoryId
+                      : null,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.category_rounded),
+                      hintText: 'Category'),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(
+                            value: c.s('id'),
+                            child: Text(c.s('name', 'Category')),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _categoryId = v),
+                ),
+                const SizedBox(height: 12),
                 TextField(
-                    controller: _category,
+                    controller: _phone,
+                    keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.category_rounded),
-                        hintText: 'Category')),
+                        prefixIcon: Icon(Icons.phone_rounded),
+                        hintText: 'Contact phone')),
                 const SizedBox(height: 12),
                 TextField(
                     controller: _price,
@@ -464,17 +666,33 @@ class _CustomerPostAdPageState extends ConsumerState<CustomerPostAdPage> {
                     decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.description_rounded),
                         hintText: 'Description')),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _uploading ? null : _pickImages,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: Text(_uploading
+                      ? 'Uploading...'
+                      : 'Add photos (${_imageUrls.length})'),
+                ),
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: () async {
+                    if ((_categoryId ?? '').isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Select a category')));
+                      return;
+                    }
                     await ref
                         .read(customerRepositoryProvider)
                         .createClassified(auth.id, {
                       'title': _title.text.trim(),
-                      'category': _category.text.trim(),
+                      'categoryId': _categoryId,
                       'price': num.tryParse(_price.text.trim()) ?? 0,
                       'location': _location.text.trim(),
                       'description': _description.text.trim(),
+                      'contactPhone': _phone.text.trim(),
+                      'imageUrls': _imageUrls,
                     });
                     if (context.mounted) context.go('/app/classifieds');
                   },

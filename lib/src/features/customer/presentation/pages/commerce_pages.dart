@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
@@ -515,8 +517,6 @@ class CustomerHomePage extends ConsumerWidget {
                       '/app/services', AppColors.warning),
                   _HomeAction('Socio', Icons.groups_rounded, '/app/social',
                       AppColors.info),
-                  _HomeAction('Find Home', Icons.apartment_rounded,
-                      '/app/find-home', AppColors.success),
                   _HomeAction('Classifieds', Icons.campaign_rounded,
                       '/app/classifieds', AppColors.primaryDark),
                   _HomeAction('Wallet', Icons.account_balance_wallet_rounded,
@@ -722,9 +722,10 @@ class _CategoryPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = category.s('name', 'Category');
+    final id = category.s('id');
     return InkWell(
-      onTap: () =>
-          context.push('/app/browse?category=${Uri.encodeComponent(name)}'),
+      onTap: () => context.push(
+          '/app/browse?category=${Uri.encodeComponent(id.isNotEmpty ? id : name)}'),
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
         width: 92,
@@ -893,28 +894,122 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
   }
 }
 
-class CustomerProductPage extends ConsumerWidget {
+class CustomerProductPage extends ConsumerStatefulWidget {
   const CustomerProductPage({required this.id, super.key});
 
   final String id;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerProductPage> createState() =>
+      _CustomerProductPageState();
+}
+
+class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
+  int _qty = 1;
+  int _imageIndex = 0;
+  Map<String, String> _attrs = {};
+  Map<String, dynamic>? _matchedVariant;
+
+  List<String> _gallery(Map<String, dynamic> product) {
+    final urls = <String>[];
+    for (final key in const [
+      'images',
+      'imageUrls',
+      'bannerUrls',
+      'mediaUrls',
+      'media_urls'
+    ]) {
+      final raw = product[key];
+      if (raw is List) {
+        for (final e in raw) {
+          final url = e is Map
+              ? (e['url'] ?? e['imageUrl'] ?? e['image'] ?? '').toString()
+              : e.toString();
+          if (url.isNotEmpty && !urls.contains(url)) urls.add(url);
+        }
+      }
+    }
+    final primary = product.s('image');
+    if (primary.isNotEmpty && !urls.contains(primary)) urls.insert(0, primary);
+    return urls;
+  }
+
+  List<Map<String, dynamic>> _variantsOf(Map<String, dynamic> product) {
+    final raw = product['variants'] ?? product['variations'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  void _matchVariant(List<Map<String, dynamic>> variants) {
+    if (variants.isEmpty || _attrs.isEmpty) {
+      _matchedVariant = null;
+      return;
+    }
+    for (final v in variants) {
+      final attrs = v['attributes'] ?? v['selectedAttributes'] ?? v['options'];
+      if (attrs is! Map) continue;
+      final map = attrs.map((k, val) => MapEntry(k.toString(), val.toString()));
+      final matches = _attrs.entries.every((e) => map[e.key] == e.value);
+      if (matches) {
+        _matchedVariant = v;
+        return;
+      }
+    }
+    _matchedVariant = null;
+  }
+
+  Set<String> _attrKeys(List<Map<String, dynamic>> variants) {
+    final keys = <String>{};
+    for (final v in variants) {
+      final attrs = v['attributes'] ?? v['selectedAttributes'] ?? v['options'];
+      if (attrs is Map) keys.addAll(attrs.keys.map((e) => e.toString()));
+    }
+    return keys;
+  }
+
+  List<String> _attrValues(
+      List<Map<String, dynamic>> variants, String key) {
+    final values = <String>{};
+    for (final v in variants) {
+      final attrs = v['attributes'] ?? v['selectedAttributes'] ?? v['options'];
+      if (attrs is Map && attrs[key] != null) {
+        values.add(attrs[key].toString());
+      }
+    }
+    return values.toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return CustomerScaffold(
       title: 'Product',
       showBack: true,
-      child: FutureBuilder<Map<String, dynamic>?>(
-        future: ref.read(customerRepositoryProvider).product(id),
+      child: FutureBuilder<
+          (Map<String, dynamic>?, List<Map<String, dynamic>>, Map<String, dynamic>, List<Map<String, dynamic>>)>(
+        future: _load(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final product = snapshot.data;
+          final product = snapshot.data?.$1;
           if (product == null) {
             return const EmptyState(
                 icon: Icons.inventory_2_rounded,
                 title: 'Product not found',
                 message: 'This product may no longer be available.');
+          }
+          final variants = snapshot.data?.$2 ?? _variantsOf(product);
+          final summary = snapshot.data?.$3 ?? {};
+          final reviews = snapshot.data?.$4 ?? [];
+          final gallery = _gallery(product);
+          num price = product.n('price');
+          final variant = _matchedVariant;
+          if (variant != null) {
+            price = variant.n(
+                'finalPrice', variant.n('sellPrice', variant.n('price', price)));
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -925,60 +1020,107 @@ class CustomerProductPage extends ConsumerWidget {
                   color: AppColors.productSurface,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: RemoteImage(
-                    url: product.s('image'),
-                    height: 310,
-                    width: double.infinity,
-                    borderRadius: 12),
+                child: Column(
+                  children: [
+                    RemoteImage(
+                        url: gallery.isEmpty
+                            ? product.s('image')
+                            : gallery[_imageIndex.clamp(0, gallery.length - 1)],
+                        height: 310,
+                        width: double.infinity,
+                        borderRadius: 12),
+                    if (gallery.length > 1) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 64,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: gallery.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (_, i) => GestureDetector(
+                            onTap: () => setState(() => _imageIndex = i),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                    color: i == _imageIndex
+                                        ? AppColors.primary
+                                        : AppColors.border,
+                                    width: 2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: RemoteImage(
+                                  url: gallery[i], width: 64, height: 64),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
-              const Row(children: [
-                Icon(Icons.timer_outlined, size: 15, color: AppColors.primary),
-                SizedBox(width: 5),
-                Text('10 MINS',
-                    style:
-                        TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-              ]),
-              const SizedBox(height: 8),
               Text(product.s('title'),
                   style: Theme.of(context)
                       .textTheme
                       .headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 6),
-              Text(
-                  product.s('vendor_name').isEmpty
-                      ? '1 unit'
-                      : product.s('vendor_name'),
-                  style: const TextStyle(
-                      color: AppColors.muted, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
               Row(
                 children: [
-                  Text(money(product.n('price')),
+                  if (summary.n('average', summary.n('avgRating')) > 0)
+                    StatusBadge(
+                        '${summary.n('average', summary.n('avgRating')).toStringAsFixed(1)} ★'),
+                  const SizedBox(width: 8),
+                  Text(
+                      product.s('vendor_name').isEmpty
+                          ? '1 unit'
+                          : product.s('vendor_name'),
                       style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.brandDark,
-                          fontSize: 24)),
-                  if (product.n('discount') > 0) ...[
-                    const SizedBox(width: 8),
-                    StatusBadge('${money(product.n('discount'))} off'),
-                  ],
+                          color: AppColors.muted, fontWeight: FontWeight.w700)),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Row(children: [
-                  Icon(Icons.bolt_rounded, color: AppColors.primary),
-                  SizedBox(width: 8),
-                  Expanded(
-                      child: Text('Superfast delivery to your doorstep',
-                          style: TextStyle(fontWeight: FontWeight.w800))),
-                ]),
+              Text(money(price),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.brandDark,
+                      fontSize: 24)),
+              if (variants.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                for (final key in _attrKeys(variants)) ...[
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(key,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w800))),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: _attrValues(variants, key)
+                        .map((v) => ChoiceChip(
+                              label: Text(v),
+                              selected: _attrs[key] == v,
+                              onSelected: (_) => setState(() {
+                                _attrs = {..._attrs, key: v};
+                                _matchVariant(variants);
+                              }),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('Qty',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 12),
+                  _QtyStepper(
+                    qty: _qty,
+                    onChanged: (q) => setState(() => _qty = q < 1 ? 1 : q),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Text(product.s('description',
@@ -988,25 +1130,17 @@ class CustomerProductPage extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () async {
-                        try {
-                          await ref
-                              .read(customerRepositoryProvider)
-                              .addToCart(product);
-                          ref.invalidate(cartSummaryProvider);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Added to cart')));
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(e.toString())));
-                          }
-                        }
-                      },
+                      onPressed: () => _addToCart(product, buyNow: false),
                       icon: const Icon(Icons.add_shopping_cart_rounded),
                       label: const Text('Add to Cart'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _addToCart(product, buyNow: true),
+                      icon: const Icon(Icons.flash_on_rounded),
+                      label: const Text('Buy Now'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1014,10 +1148,11 @@ class CustomerProductPage extends ConsumerWidget {
                     onPressed: () async {
                       await ref
                           .read(customerRepositoryProvider)
-                          .toggleWishlist(id);
+                          .toggleWishlist(widget.id);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Wishlist updated')));
+                            const SnackBar(
+                                content: Text('Wishlist updated')));
                       }
                     },
                     icon: const Icon(Icons.favorite_rounded),
@@ -1028,16 +1163,84 @@ class CustomerProductPage extends ConsumerWidget {
               OutlinedButton.icon(
                 onPressed: product.s('vendor_id').isEmpty
                     ? null
-                    : () =>
-                        context.push('/app/vendor/${product.s('vendor_id')}'),
+                    : () => context
+                        .push('/app/vendor/${product.s('vendor_id')}'),
                 icon: const Icon(Icons.storefront_rounded),
                 label: const Text('View Seller'),
               ),
+              const SectionHeader(title: 'Reviews'),
+              if (reviews.isEmpty)
+                const Text('No reviews yet.',
+                    style: TextStyle(color: AppColors.muted))
+              else
+                ...reviews.map((r) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppCard(
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(r.s('customer_name', 'Customer')),
+                          subtitle:
+                              Text(r.s('comment', r.s('review', r.s('body')))),
+                          trailing: Text('${r.i('rating')} ★'),
+                        ),
+                      ),
+                    )),
             ],
           );
         },
       ),
     );
+  }
+
+  Future<
+      (
+        Map<String, dynamic>?,
+        List<Map<String, dynamic>>,
+        Map<String, dynamic>,
+        List<Map<String, dynamic>>
+      )> _load() async {
+    final repo = ref.read(customerRepositoryProvider);
+    final product = await repo.product(widget.id);
+    final variants = product == null
+        ? <Map<String, dynamic>>[]
+        : await repo.productVariants(widget.id);
+    final summary = await repo.productReviewSummary(widget.id);
+    final reviews = await repo.productReviews(widget.id);
+    return (product, variants, summary, reviews);
+  }
+
+  Future<void> _addToCart(Map<String, dynamic> product,
+      {required bool buyNow}) async {
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      if (buyNow) await repo.clearCart();
+      final variantId = _matchedVariant?.s('id');
+      final priced = {
+        ...product,
+        if (_matchedVariant != null)
+          'price': _matchedVariant!.n('finalPrice',
+              _matchedVariant!.n('sellPrice', product.n('price'))),
+      };
+      await repo.addToCart(
+        priced,
+        qty: _qty,
+        selectedAttributes: _attrs.isEmpty ? null : _attrs,
+        variantId: variantId?.isEmpty == true ? null : variantId,
+      );
+      ref.invalidate(cartSummaryProvider);
+      if (!mounted) return;
+      if (buyNow) {
+        context.push('/app/payment');
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Added to cart')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
   }
 }
 
@@ -1138,9 +1341,19 @@ class CustomerCartPage extends ConsumerWidget {
                 child: Column(
                   children: [
                     _TotalRow('Subtotal', cart.subtotal),
-                    _TotalRow('Tax', cart.tax),
-                    _TotalRow('Platform fee', cart.platformFee),
-                    _TotalRow('Discount', -cart.discount),
+                    if (cart.tax > 0) _TotalRow('Tax', cart.tax),
+                    if (cart.platformFee > 0)
+                      _TotalRow('Platform fee', cart.platformFee),
+                    if (cart.gstOnPlatformFee > 0)
+                      _TotalRow('GST on fee', cart.gstOnPlatformFee),
+                    if (cart.deliveryFee > 0)
+                      _TotalRow('Delivery', cart.deliveryFee),
+                    if (cart.surgeCost > 0) _TotalRow('Surge', cart.surgeCost),
+                    if (cart.discount > 0) _TotalRow('Discount', -cart.discount),
+                    if (cart.pointsRedeemedValue > 0)
+                      _TotalRow('Points redeemed', -cart.pointsRedeemedValue),
+                    if (cart.couponDiscount > 0)
+                      _TotalRow('Coupon', -cart.couponDiscount),
                     const Divider(),
                     _TotalRow('Total', cart.total, bold: true),
                   ],
@@ -1163,86 +1376,284 @@ class CustomerCartPage extends ConsumerWidget {
   }
 }
 
-class PaymentPage extends ConsumerWidget {
+class PaymentPage extends ConsumerStatefulWidget {
   const PaymentPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PaymentPage> createState() => _PaymentPageState();
+}
+
+class _PaymentPageState extends ConsumerState<PaymentPage> {
+  CartSummary? _summary;
+  List<Map<String, dynamic>> _addresses = const [];
+  final _coupon = TextEditingController();
+  final _points = TextEditingController(text: '0');
+  String _payMethod = 'cod';
+  num _couponDiscount = 0;
+  bool _loading = true;
+  bool _placing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _coupon.dispose();
+    _points.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final auth = ref.read(customerAuthStateProvider).valueOrNull;
+    if (auth == null) return;
+    setState(() => _loading = true);
+    try {
+      final points = int.tryParse(_points.text.trim()) ?? 0;
+      final repo = ref.read(customerRepositoryProvider);
+      final summary = await repo.cartSummary(
+          pointsUsed: points, couponDiscount: _couponDiscount);
+      final addresses = await repo.customerAddresses(auth.id);
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _addresses = addresses;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const _LoginRequired();
+    if (_loading) {
+      return const CustomerScaffold(
+          title: 'Payment',
+          showBack: true,
+          child: Center(child: CircularProgressIndicator()));
+    }
+    final summary = _summary;
+    if (summary == null || summary.items.isEmpty) {
+      return const CustomerScaffold(
+        title: 'Payment',
+        showBack: true,
+        child: EmptyState(
+            icon: Icons.shopping_cart_rounded,
+            title: 'Cart is empty',
+            message: 'Add products before payment.'),
+      );
+    }
+    final address = _addresses.isEmpty ? null : _addresses.first;
     return CustomerScaffold(
       title: 'Payment',
       showBack: true,
-      child: FutureBuilder<(CartSummary, List<Map<String, dynamic>>)>(
-        future: _paymentData(ref, auth.id),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final data = snapshot.data;
-          if (data == null || data.$1.items.isEmpty) {
-            return const EmptyState(
-                icon: Icons.shopping_cart_rounded,
-                title: 'Cart is empty',
-                message: 'Add products before payment.');
-          }
-          final summary = data.$1;
-          final address = data.$2.isEmpty ? null : data.$2.first;
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              SectionHeader(title: 'Delivery Address'),
-              AppCard(
-                child: address == null
-                    ? const Text(
-                        'No saved address. Add one from profile edit or set location.')
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                            Text(address.s('name', auth.name),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900)),
-                            Text(address.s(
-                                'address_line', address.s('address'))),
-                            Text(
-                                '${address.s('city')} ${address.s('pincode')}'),
-                          ]),
-              ),
-              const SectionHeader(title: 'Order Summary'),
-              AppCard(
-                child: Column(
-                  children: [
-                    _TotalRow('Items', summary.count),
-                    _TotalRow('Subtotal', summary.subtotal),
-                    _TotalRow('Tax', summary.tax),
-                    _TotalRow('Platform fee', summary.platformFee),
-                    const Divider(),
-                    _TotalRow('Payable', summary.total, bold: true),
-                  ],
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const SectionHeader(title: 'Delivery Address'),
+          AppCard(
+            child: address == null
+                ? const Text(
+                    'No saved address. Add one from profile edit or set location.')
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                        Text(address.s('name', auth.name),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
+                        Text(
+                            address.s('address_line', address.s('address'))),
+                        Text('${address.s('city')} ${address.s('pincode')}'),
+                      ]),
+          ),
+          const SectionHeader(title: 'Rewards & coupon'),
+          AppCard(
+            child: Column(
+              children: [
+                TextField(
+                  controller: _points,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Redeem points',
+                    hintText:
+                        'Max ${summary.maxRedeemableValue.round()} pts / balance ${summary.walletBalanceBefore.round()}',
+                    prefixIcon: const Icon(Icons.stars_rounded),
+                    suffixIcon: TextButton(onPressed: _load, child: const Text('Apply')),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: () async {
-                  await ref.read(customerRepositoryProvider).placeOrder(
-                      customerId: auth.id, summary: summary, address: address);
-                  ref.invalidate(cartSummaryProvider);
-                  if (context.mounted) context.go('/app/orders');
-                },
-                icon: const Icon(Icons.check_circle_rounded),
-                label: const Text('Place Order'),
-              ),
-            ],
-          );
-        },
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _coupon,
+                  decoration: InputDecoration(
+                    labelText: 'Coupon code',
+                    prefixIcon: const Icon(Icons.local_offer_outlined),
+                    suffixIcon: TextButton(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          final discount = await ref
+                              .read(customerRepositoryProvider)
+                              .validateCouponCode(
+                                  _coupon.text, summary.subtotal);
+                          setState(() => _couponDiscount = discount);
+                          await _load();
+                          messenger.showSnackBar(SnackBar(
+                              content: Text(
+                                  'Coupon applied: ${money(discount)} off')));
+                        } catch (e) {
+                          messenger
+                              .showSnackBar(SnackBar(content: Text('$e')));
+                        }
+                      },
+                      child: const Text('Apply'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SectionHeader(title: 'Order Summary'),
+          AppCard(
+            child: Column(
+              children: [
+                _TotalRow('Items', summary.count),
+                _TotalRow('Subtotal', summary.subtotal),
+                if (summary.tax > 0) _TotalRow('Tax', summary.tax),
+                if (summary.platformFee > 0)
+                  _TotalRow('Platform fee', summary.platformFee),
+                if (summary.gstOnPlatformFee > 0)
+                  _TotalRow('GST on fee', summary.gstOnPlatformFee),
+                if (summary.deliveryFee > 0)
+                  _TotalRow('Delivery', summary.deliveryFee),
+                if (summary.surgeCost > 0)
+                  _TotalRow('Surge', summary.surgeCost),
+                if (summary.discount > 0)
+                  _TotalRow('Discount', -summary.discount),
+                if (summary.pointsRedeemedValue > 0)
+                  _TotalRow(
+                      'Points redeemed', -summary.pointsRedeemedValue),
+                if (summary.couponDiscount > 0)
+                  _TotalRow('Coupon', -summary.couponDiscount),
+                const Divider(),
+                _TotalRow('Payable', summary.total, bold: true),
+              ],
+            ),
+          ),
+          const SectionHeader(title: 'Payment method'),
+          AppCard(
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Cash on Delivery'),
+                  leading: Icon(
+                      _payMethod == 'cod'
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      color: AppColors.primary),
+                  onTap: () => setState(() => _payMethod = 'cod'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Online (Razorpay)'),
+                  subtitle: const Text(
+                      'Creates a payment intent and confirms after capture'),
+                  leading: Icon(
+                      _payMethod == 'online'
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      color: AppColors.primary),
+                  onTap: () => setState(() => _payMethod = 'online'),
+                ),
+              ],
+            ),
+          ),
+          if (!summary.meetsMinCart)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Cart does not meet the minimum order amount.',
+                  style: TextStyle(color: Colors.red)),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _placing || !summary.meetsMinCart
+                ? null
+                : () => _place(auth.id, summary, address),
+            icon: const Icon(Icons.check_circle_rounded),
+            label: Text(_placing ? 'Placing...' : 'Place Order'),
+          ),
+        ],
       ),
     );
   }
 
-  Future<(CartSummary, List<Map<String, dynamic>>)> _paymentData(
-      WidgetRef ref, String customerId) async {
-    final repo = ref.read(customerRepositoryProvider);
-    return (await repo.cartSummary(), await repo.customerAddresses(customerId));
+  Future<void> _place(String customerId, CartSummary summary,
+      Map<String, dynamic>? address) async {
+    setState(() {
+      _placing = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      final order = await repo.placeOrder(
+        customerId: customerId,
+        summary: summary,
+        address: address,
+        paymentMode: _payMethod,
+      );
+      if (_payMethod == 'online') {
+        final intent = await repo.createPaymentIntentForOrder(
+          orderId: order.s('id'),
+          amount: summary.total,
+        );
+        final intentId = intent.s('id');
+        var paid = false;
+        for (var i = 0; i < 8; i++) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          final status = await repo.paymentIntentStatus(intentId);
+          final st = status.s('status').toLowerCase();
+          if (st == 'succeeded' ||
+              st == 'completed' ||
+              st == 'captured') {
+            paid = true;
+            break;
+          }
+          if (st == 'failed' || st == 'cancelled') break;
+        }
+        if (!paid) {
+          // Still leave the order pending; user can pay from My Orders later.
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text(
+                    'Order created. Complete payment from My Orders if needed.')));
+          }
+        } else {
+          await repo.clearCartAfterPaid();
+        }
+      }
+      ref.invalidate(cartSummaryProvider);
+      if (mounted) context.go('/app/orders');
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
   }
 }
 
@@ -1386,12 +1797,131 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                     ),
                   ),
                 ),
+              const SectionHeader(title: 'Bill details'),
+              AppCard(
+                child: Column(
+                  children: [
+                    if (order.n('subtotal') > 0)
+                      _TotalRow('Subtotal', order.n('subtotal')),
+                    if (order.n('platform_fee') > 0)
+                      _TotalRow('Platform fee', order.n('platform_fee')),
+                    if (order.n('gst') > 0) _TotalRow('GST', order.n('gst')),
+                    if (order.n('delivery_fee') > 0)
+                      _TotalRow('Delivery', order.n('delivery_fee')),
+                    const Divider(),
+                    _TotalRow('Grand total', order.n('total'), bold: true),
+                  ],
+                ),
+              ),
+              const SectionHeader(title: 'Payment'),
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Status: ${order.s('payment_status', 'pending')}'),
+                    if (order.s('payment_ref').isNotEmpty)
+                      Text('Ref: ${order.s('payment_ref')}'),
+                  ],
+                ),
+              ),
+              if (order.s('vendor_name').isNotEmpty ||
+                  order.s('vendor_id').isNotEmpty) ...[
+                const SectionHeader(title: 'Seller'),
+                AppCard(
+                  onTap: order.s('vendor_id').isEmpty
+                      ? null
+                      : () =>
+                          context.push('/app/vendor/${order.s('vendor_id')}'),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.storefront_rounded,
+                          color: AppColors.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(
+                              order.s('vendor_name', 'Seller'),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800))),
+                      if (order.s('vendor_id').isNotEmpty)
+                        const Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final buf = StringBuffer()
+                    ..writeln('P4U Order Invoice')
+                    ..writeln('Order: ${order.s('id')}')
+                    ..writeln('Date: ${order.s('created_at')}')
+                    ..writeln('Status: ${order.s('status')}')
+                    ..writeln('---');
+                  for (final item in items) {
+                    buf.writeln(
+                        '${item.s('title')} x${item.i('qty', 1)} = ${money(item.n('price') * item.i('qty', 1))}');
+                  }
+                  buf.writeln('Total: ${money(order.n('total'))}');
+                  await Clipboard.setData(ClipboardData(text: buf.toString()));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Invoice copied to clipboard')));
+                  }
+                },
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Copy invoice'),
+              ),
+              if (_canCancel(order.s('status', 'placed'))) ...[
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Cancel order?'),
+                        content: const Text(
+                            'This will cancel the order if it has not shipped.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Keep')),
+                          FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Cancel order')),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    await ref
+                        .read(customerRepositoryProvider)
+                        .cancelOrder(orderId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Order cancelled')));
+                      context.pop();
+                    }
+                  },
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel Order'),
+                ),
+              ],
             ],
           );
         },
       ),
     );
   }
+}
+
+bool _canCancel(String status) {
+  const blocked = {
+    'cancelled',
+    'canceled',
+    'shipped',
+    'delivered',
+    'completed',
+  };
+  return !blocked.contains(status.toLowerCase());
 }
 
 class CustomerVendorPage extends ConsumerWidget {
@@ -1421,6 +1951,24 @@ class CustomerVendorPage extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if ((vendor['banners'] is List) &&
+                  (vendor['banners'] as List).isNotEmpty)
+                SizedBox(
+                  height: 160,
+                  child: PageView(
+                    children: [
+                      for (final b in (vendor['banners'] as List))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: RemoteImage(
+                              url: b.toString(),
+                              height: 160,
+                              width: double.infinity,
+                              borderRadius: 14),
+                        ),
+                    ],
+                  ),
+                ),
               AppCard(
                 child: Row(
                   children: [
@@ -1436,7 +1984,38 @@ class CustomerVendorPage extends ConsumerWidget {
                             Text(vendor.s('city'),
                                 style: const TextStyle(color: AppColors.muted)),
                             const SizedBox(height: 6),
-                            StatusBadge(vendor.s('status', 'active')),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                StatusBadge(vendor.s('status', 'active')),
+                                if (vendor.n('rating') > 0)
+                                  StatusBadge(
+                                      '${vendor.n('rating').toStringAsFixed(1)} ★'),
+                              ],
+                            ),
+                            if (vendor.s('mobile').isNotEmpty ||
+                                vendor.s('email').isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              if (vendor.s('mobile').isNotEmpty)
+                                InkWell(
+                                  onTap: () => launchUrl(Uri(
+                                      scheme: 'tel',
+                                      path: vendor.s('mobile'))),
+                                  child: Text(vendor.s('mobile'),
+                                      style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w700)),
+                                ),
+                              if (vendor.s('email').isNotEmpty)
+                                InkWell(
+                                  onTap: () => launchUrl(Uri(
+                                      scheme: 'mailto',
+                                      path: vendor.s('email'))),
+                                  child: Text(vendor.s('email'),
+                                      style: const TextStyle(
+                                          color: AppColors.muted)),
+                                ),
+                            ],
                           ]),
                     ),
                   ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -26,7 +27,6 @@ class CustomerScaffold extends ConsumerWidget {
     _NavItem('Shop', Icons.shopping_bag_rounded, '/app/browse'),
     _NavItem('Services', Icons.home_repair_service_rounded, '/app/services'),
     _NavItem('Socio', Icons.groups_rounded, '/app/social'),
-    _NavItem('Homes', Icons.apartment_rounded, '/app/find-home'),
     _NavItem('Ads', Icons.campaign_rounded, '/app/classifieds'),
   ];
 
@@ -34,72 +34,126 @@ class CustomerScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(customerAuthStateProvider);
     final customer = auth.valueOrNull;
-    return Scaffold(
-      appBar: AppBar(
-        leading: showBack
-            ? IconButton(
-                onPressed: () => context.pop(),
-                icon: const Icon(Icons.arrow_back_rounded))
-            : null,
-        titleSpacing: showBack ? 0 : 16,
-        title: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
+    final currentPath = GoRouterState.of(context).uri.path;
+    final canExit = currentPath == '/app' && !context.canPop();
+    return PopScope(
+      canPop: canExit,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _safeBack(context);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: showBack
+              ? IconButton(
+                  onPressed: () => _safeBack(context),
+                  icon: const Icon(Icons.arrow_back_rounded))
+              : null,
+          titleSpacing: showBack ? 0 : 16,
+          title: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: AppColors.softGreen, // soft teal brand tile
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Image.asset('assets/images/p4u-logo.png',
+                    fit: BoxFit.contain),
               ),
-              child: Image.asset('assets/images/p4u-logo.png',
-                  fit: BoxFit.contain),
+              const SizedBox(width: 8),
+              Flexible(
+                  child: Text(title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Cart',
+              onPressed: () => context.push('/app/cart'),
+              icon: const Icon(Icons.shopping_cart_rounded),
             ),
-            const SizedBox(width: 8),
-            Flexible(
-                child:
-                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            if (customer == null)
+              TextButton(
+                onPressed: () => context.push('/app/login'),
+                child: const Text('Login',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w900)),
+              )
+            else
+              IconButton(
+                tooltip: 'Profile',
+                onPressed: () => context.push('/app/profile'),
+                icon: CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Colors.white,
+                  child: Text(
+                      customer.name.isEmpty
+                          ? 'U'
+                          : customer.name.characters.first.toUpperCase(),
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ...?actions,
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Cart',
-            onPressed: () => context.push('/app/cart'),
-            icon: const Icon(Icons.shopping_cart_rounded),
-          ),
-          if (customer == null)
-            TextButton(
-              onPressed: () => context.push('/app/login'),
-              child: const Text('Login',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w900)),
-            )
-          else
-            IconButton(
-              tooltip: 'Profile',
-              onPressed: () => context.push('/app/profile'),
-              icon: CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.white,
-                child: Text(
-                    customer.name.isEmpty
-                        ? 'U'
-                        : customer.name.characters.first.toUpperCase(),
-                    style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900)),
-              ),
-            ),
-          ...?actions,
-        ],
+        body: child,
+        bottomNavigationBar: bottomNavIndex == null
+            ? null
+            : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
       ),
-      body: child,
-      bottomNavigationBar: bottomNavIndex == null
-          ? null
-          : _CustomerBottomNav(selectedIndex: bottomNavIndex!),
     );
   }
+}
+
+void _safeBack(BuildContext context) {
+  if (context.canPop()) {
+    context.pop();
+    return;
+  }
+  final path = GoRouterState.of(context).uri.path;
+  final fallback = _fallbackRoute(path);
+  if (fallback == null) {
+    SystemNavigator.pop();
+  } else if (fallback != path) {
+    context.go(fallback);
+  }
+}
+
+String? _fallbackRoute(String path) {
+  if (path == '/app') return null;
+  if (path == '/app/browse' ||
+      path == '/app/services' ||
+      path == '/app/social' ||
+      path == '/app/find-home' ||
+      path == '/app/classifieds') {
+    return '/app';
+  }
+  if (path == '/app/profile/edit') return '/app/profile';
+  if (path.startsWith('/app/product/') ||
+      path.startsWith('/app/vendor/') ||
+      path == '/app/cart' ||
+      path == '/app/payment') {
+    return '/app/browse';
+  }
+  if (path.startsWith('/app/orders/')) return '/app/orders';
+  if (path.startsWith('/app/service/')) return '/app/services';
+  if (path.startsWith('/app/classifieds/')) return '/app/classifieds';
+  if (path.startsWith('/app/social/')) return '/app/social';
+  if (path.startsWith('/app/find-home/')) return '/app/find-home';
+  if (path == '/app/login' ||
+      path == '/app/register' ||
+      path == '/app/forgot-password' ||
+      path == '/app/reset-password' ||
+      path == '/app/set-password' ||
+      path == '/app/set-location') {
+    return '/app';
+  }
+  return '/app';
 }
 
 class _NavItem {

@@ -133,6 +133,15 @@ class CartSummary {
     required this.discount,
     required this.platformFee,
     required this.pointsUsed,
+    this.deliveryFee = 0,
+    this.gstOnPlatformFee = 0,
+    this.surgeCost = 0,
+    this.pointsRedeemedValue = 0,
+    this.couponDiscount = 0,
+    this.grandTotal,
+    this.walletBalanceBefore = 0,
+    this.maxRedeemableValue = 0,
+    this.meetsMinCart = true,
   });
 
   final List<CartItem> items;
@@ -141,9 +150,66 @@ class CartSummary {
   final num discount;
   final num platformFee;
   final int pointsUsed;
+  final num deliveryFee;
+  final num gstOnPlatformFee;
+  final num surgeCost;
+  final num pointsRedeemedValue;
+  final num couponDiscount;
+  final num? grandTotal;
+  final num walletBalanceBefore;
+  final num maxRedeemableValue;
+  final bool meetsMinCart;
 
-  num get total => subtotal + tax + platformFee - discount - pointsUsed;
+  num get total {
+    if (grandTotal != null) return grandTotal!;
+    return subtotal +
+        tax +
+        platformFee +
+        gstOnPlatformFee +
+        deliveryFee +
+        surgeCost -
+        discount -
+        pointsRedeemedValue -
+        couponDiscount -
+        pointsUsed;
+  }
+
   int get count => items.fold(0, (sum, item) => sum + item.qty);
+
+  CartSummary copyWith({
+    List<CartItem>? items,
+    num? subtotal,
+    num? tax,
+    num? discount,
+    num? platformFee,
+    int? pointsUsed,
+    num? deliveryFee,
+    num? gstOnPlatformFee,
+    num? surgeCost,
+    num? pointsRedeemedValue,
+    num? couponDiscount,
+    num? grandTotal,
+    num? walletBalanceBefore,
+    num? maxRedeemableValue,
+    bool? meetsMinCart,
+  }) =>
+      CartSummary(
+        items: items ?? this.items,
+        subtotal: subtotal ?? this.subtotal,
+        tax: tax ?? this.tax,
+        discount: discount ?? this.discount,
+        platformFee: platformFee ?? this.platformFee,
+        pointsUsed: pointsUsed ?? this.pointsUsed,
+        deliveryFee: deliveryFee ?? this.deliveryFee,
+        gstOnPlatformFee: gstOnPlatformFee ?? this.gstOnPlatformFee,
+        surgeCost: surgeCost ?? this.surgeCost,
+        pointsRedeemedValue: pointsRedeemedValue ?? this.pointsRedeemedValue,
+        couponDiscount: couponDiscount ?? this.couponDiscount,
+        grandTotal: grandTotal ?? this.grandTotal,
+        walletBalanceBefore: walletBalanceBefore ?? this.walletBalanceBefore,
+        maxRedeemableValue: maxRedeemableValue ?? this.maxRedeemableValue,
+        meetsMinCart: meetsMinCart ?? this.meetsMinCart,
+      );
 }
 
 String encodeCart(List<CartItem> items) =>

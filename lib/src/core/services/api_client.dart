@@ -38,10 +38,26 @@ class ApiSession {
 
   Future<String?> customerId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_customerIdKey);
+    final stored = prefs.getString(_customerIdKey);
+    if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+    final fromJwt = customerIdFromAccessToken(await accessToken());
+    if (fromJwt != null && fromJwt.isNotEmpty) {
+      await prefs.setString(_customerIdKey, fromJwt);
+      return fromJwt;
+    }
+    return null;
   }
 
-  Future<bool> hasToken() async => (await accessToken())?.isNotEmpty == true;
+  Future<void> setCustomerId(String id) async {
+    if (id.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_customerIdKey, id.trim());
+    _changes.add(null);
+  }
+
+  Future<bool> hasToken() async =>
+      (await accessToken())?.isNotEmpty == true ||
+      (await refreshToken())?.isNotEmpty == true;
 
   Future<Map<String, dynamic>?> cachedProfile() async {
     final prefs = await SharedPreferences.getInstance();
@@ -56,7 +72,13 @@ class ApiSession {
     final prefs = await SharedPreferences.getInstance();
     final access = data['accessToken'] ?? data['access_token'];
     final refresh = data['refreshToken'] ?? data['refresh_token'];
-    final customerId = data['customerId'] ?? data['customer_id'];
+    var customerId = data['customerId'] ?? data['customer_id'];
+    if (customerId == null || customerId.toString().trim().isEmpty) {
+      customerId = customerIdFromAccessToken(access?.toString());
+    }
+    if (customerId == null || customerId.toString().trim().isEmpty) {
+      customerId = profile?['id'] ?? profile?['customerId'];
+    }
     final roles = data['roles'];
     if (access != null) {
       await prefs.setString(_accessTokenKey, access.toString());
@@ -64,8 +86,8 @@ class ApiSession {
     if (refresh != null) {
       await prefs.setString(_refreshTokenKey, refresh.toString());
     }
-    if (customerId != null) {
-      await prefs.setString(_customerIdKey, customerId.toString());
+    if (customerId != null && customerId.toString().trim().isNotEmpty) {
+      await prefs.setString(_customerIdKey, customerId.toString().trim());
     }
     if (roles != null) await prefs.setString(_rolesKey, jsonEncode(roles));
     if (profile != null) {
@@ -77,7 +99,6 @@ class ApiSession {
   Future<void> saveProfile(Map<String, dynamic> profile) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileKey, jsonEncode(profile));
-    _changes.add(null);
   }
 
   Future<void> clear() async {
@@ -306,7 +327,6 @@ class ApiClient {
       final auth = apiObject(data['auth'] ?? data['data'] ?? data) ?? data;
       await session.saveAuth(auth);
     } on ApiException {
-      await session.clear();
       rethrow;
     }
   }
@@ -350,6 +370,28 @@ class ApiClient {
           'API request failed';
       throw ApiException(message.toString(),
           statusCode: response.statusCode, details: data);
+    }
+    // Mirror web client: unwrap `{ success: true, data: ... }` so callers see
+    // the payload fields (email, balance, items) at the top level.
+    if (data['success'] == true && data.containsKey('data')) {
+      final inner = data['data'];
+      if (inner is Map) {
+        final result = Map<String, dynamic>.from(inner);
+        for (final key in const ['total', 'limit', 'offset', 'page']) {
+          if (data[key] != null && result[key] == null) {
+            result[key] = data[key];
+          }
+        }
+        return result;
+      }
+      if (inner is List) {
+        return {
+          'items': inner,
+          if (data['total'] != null) 'total': data['total'],
+          if (data['limit'] != null) 'limit': data['limit'],
+          if (data['offset'] != null) 'offset': data['offset'],
+        };
+      }
     }
     return data;
   }
@@ -403,7 +445,43 @@ List<Map<String, dynamic>> apiItems(Object? value) {
 }
 
 Map<String, dynamic>? apiObject(Object? value) {
-  if (value is Map<String, dynamic>) return value;
-  if (value is Map) return Map<String, dynamic>.from(value);
+  if (value is Map<String, dynamic>) {
+    if (value['success'] == true && value['data'] is Map) {
+      return Map<String, dynamic>.from(value['data'] as Map);
+    }
+    return value;
+  }
+  if (value is Map) {
+    final map = Map<String, dynamic>.from(value);
+    if (map['success'] == true && map['data'] is Map) {
+      return Map<String, dynamic>.from(map['data'] as Map);
+    }
+    return map;
+  }
+  return null;
+}
+
+/// Decode JWT payload (no verify) and return customer_id / customerId / sub.
+String? customerIdFromAccessToken(String? accessToken) {
+  if (accessToken == null || accessToken.trim().isEmpty) return null;
+  try {
+    final parts = accessToken.split('.');
+    if (parts.length < 2) return null;
+    var payload = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+    while (payload.length % 4 != 0) {
+      payload += '=';
+    }
+    final json = jsonDecode(utf8.decode(base64Decode(payload)));
+    if (json is! Map) return null;
+    final map = Map<String, dynamic>.from(json);
+    final explicit = map['customer_id'] ?? map['customerId'];
+    if (explicit != null && explicit.toString().trim().isNotEmpty) {
+      return explicit.toString().trim();
+    }
+    final sub = map['sub'];
+    if (sub != null && sub.toString().trim().isNotEmpty) {
+      return sub.toString().trim();
+    }
+  } catch (_) {}
   return null;
 }

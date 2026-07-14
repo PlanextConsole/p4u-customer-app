@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/api_client.dart';
 import '../theme/app_theme.dart';
+import '../utils/media_url.dart';
 
 class RemoteImage extends StatelessWidget {
   const RemoteImage({
@@ -23,8 +23,7 @@ class RemoteImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final raw = url?.trim() ?? '';
-    final candidate = _resolveUrl(raw);
+    final candidate = resolveMediaUrl(url);
     Widget image;
     if (candidate.startsWith('http')) {
       image = Image.network(
@@ -58,14 +57,6 @@ class RemoteImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(borderRadius),
       child: SizedBox(height: height, width: width, child: image),
     );
-  }
-
-  String _resolveUrl(String raw) {
-    if (raw.isEmpty || raw.startsWith('http') || raw.startsWith('assets/')) {
-      return raw;
-    }
-    final normalized = raw.startsWith('/') ? raw : '/$raw';
-    return '${ApiClient.baseUrl}$normalized';
   }
 
   Widget _fallback({IconData icon = Icons.image_not_supported_rounded}) {

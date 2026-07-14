@@ -10,6 +10,7 @@ import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../features/customer/data/customer_providers.dart';
+import '../../../../firebase_options.dart';
 import '../data/auth_repository.dart';
 
 ButtonStyle _authOutlineStyle({Size? minimumSize}) => FilledButton.styleFrom(
@@ -74,13 +75,14 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
       _snack('Please enter a valid 10-digit phone number');
       return;
     }
-    if (Firebase.apps.isEmpty) {
+    setState(() => _loading = true);
+    final firebaseReady = await _ensureFirebase();
+    if (!firebaseReady) {
+      if (mounted) setState(() => _loading = false);
       _snack(
-        'Firebase is not configured. Add SHA fingerprints in Firebase Console and replace android/app/google-services.json, then rebuild the app.',
-      );
+          'Firebase is not ready. Check google-services.json and try again.');
       return;
     }
-    setState(() => _loading = true);
     try {
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: '+91$digits',
@@ -106,6 +108,19 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     } catch (e) {
       _snack(_friendly(e));
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<bool> _ensureFirebase() async {
+    if (Firebase.apps.isNotEmpty) return true;
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).timeout(const Duration(seconds: 8));
+      return Firebase.apps.isNotEmpty;
+    } catch (e) {
+      debugPrint('Firebase init failed before OTP: $e');
+      return false;
     }
   }
 
@@ -471,10 +486,13 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
     }
     if (!_email.text.contains('@')) return _snack('Please enter a valid email');
     if (!_accepted) return _snack('Please accept terms and privacy policy');
-    if (Firebase.apps.isEmpty) {
-      return _snack('Firebase is not configured for this native app yet.');
-    }
     setState(() => _loading = true);
+    final firebaseReady = await _ensureFirebase();
+    if (!firebaseReady) {
+      if (mounted) setState(() => _loading = false);
+      return _snack(
+          'Firebase is not ready. Check google-services.json and try again.');
+    }
     try {
       await firebase.FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: '+91$digits',
@@ -498,6 +516,19 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
     } catch (e) {
       _snack(_friendly(e));
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<bool> _ensureFirebase() async {
+    if (Firebase.apps.isNotEmpty) return true;
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).timeout(const Duration(seconds: 8));
+      return Firebase.apps.isNotEmpty;
+    } catch (e) {
+      debugPrint('Firebase init failed before OTP: $e');
+      return false;
     }
   }
 

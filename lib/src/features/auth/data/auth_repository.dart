@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../customer/data/customer_api.dart';
@@ -14,6 +14,14 @@ Map<String, dynamic> _authPayloadFromPhoneExchange(
 
 bool _hasAccessToken(Map<String, dynamic> payload) =>
     payload['accessToken'] != null || payload['access_token'] != null;
+
+Map<String, dynamic>? _profilePayloadFromAuthResponse(
+    Map<String, dynamic> response) {
+  final profile =
+      response['profile'] ?? response['customer'] ?? response['user'];
+  final object = apiObject(profile);
+  return object == null ? null : Map<String, dynamic>.from(object);
+}
 
 class AuthRepository {
   AuthRepository({ApiClient? api})
@@ -32,6 +40,10 @@ class AuthRepository {
       final profile =
           _profileFrom(await _api.getJson('/api/v1/profile/me', auth: true));
       await apiSession.saveProfile(profile);
+      final cid = (profile['id'] ?? profile['customerId'])?.toString();
+      if (cid != null && cid.isNotEmpty) {
+        await apiSession.setCustomerId(cid);
+      }
       return CustomerUser.fromApi(profile,
           fallbackId: await apiSession.customerId());
     } on ApiException catch (e) {
@@ -71,7 +83,6 @@ class AuthRepository {
     return CustomerUser.fromApi(profile ?? auth,
         fallbackId: auth['customerId']?.toString());
   }
-
   Future<CustomerUser> registerWithFirebaseIdToken({
     required String firebaseIdToken,
     required String name,
@@ -104,7 +115,7 @@ class AuthRepository {
               firebaseIdToken)
           .toString();
     }
-    final auth = await _gateway.registerCustomerByPhone(
+    final response = await _gateway.registerCustomerByPhone(
       {
         'registrationToken': registrationToken,
         'fullName': name,
@@ -117,8 +128,9 @@ class AuthRepository {
         'referralCode': referralCode,
       },
     );
+    final auth = _authPayloadFromPhoneExchange(response);
     await apiSession.saveAuth(auth);
-    final profile = await _safeProfile();
+    final profile = _profilePayloadFromAuthResponse(response) ?? await _safeProfile();
     if (profile != null) await apiSession.saveProfile(profile);
     return CustomerUser.fromApi(profile ?? auth,
         fallbackId: auth['customerId']?.toString());
@@ -157,9 +169,27 @@ class AuthRepository {
   }
 
   Map<String, dynamic> _profileFrom(Map<String, dynamic> data) {
-    return apiObject(
+    final raw = apiObject(
             data['profile'] ?? data['customer'] ?? data['user'] ?? data) ??
         data;
+    final meta = raw['metadata'] is Map
+        ? Map<String, dynamic>.from(raw['metadata'] as Map)
+        : <String, dynamic>{};
+    final name = (raw['fullName'] ?? raw['name'] ?? raw['displayName'] ?? '')
+        .toString();
+    final phone = (raw['phone'] ?? raw['mobile'] ?? '').toString();
+    return {
+      ...raw,
+      'id': (raw['id'] ?? raw['customerId'] ?? '').toString(),
+      'name': name,
+      'fullName': name,
+      'email': (raw['email'] ?? '').toString(),
+      'phone': phone,
+      'mobile': phone,
+      'dob': (raw['dob'] ?? meta['dob'] ?? '').toString(),
+      'gender': (raw['gender'] ?? meta['gender'] ?? '').toString(),
+      'metadata': meta,
+    };
   }
 }
 
@@ -172,3 +202,6 @@ final customerAuthStateProvider = StreamProvider<CustomerUser?>((ref) async* {
     yield await repo.currentCustomer();
   }
 });
+
+
+

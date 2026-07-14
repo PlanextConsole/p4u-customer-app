@@ -1,13 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/map_ext.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/customer_scaffold.dart';
+import '../../../../core/widgets/remote_image.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import '../widgets/customer_tiles.dart';
@@ -51,17 +56,33 @@ class CustomerProfilePage extends ConsumerWidget {
               AppCard(
                 child: Row(
                   children: [
-                    CircleAvatar(
-                        radius: 34,
-                        backgroundColor: AppColors.accent,
-                        child: Text(
-                            auth.name.isEmpty
-                                ? 'U'
-                                : auth.name.characters.first.toUpperCase(),
-                            style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.primary))),
+                    Builder(builder: (context) {
+                      final meta = profile['metadata'];
+                      final metaMap = meta is Map
+                          ? Map<String, dynamic>.from(meta)
+                          : <String, dynamic>{};
+                      final avatar = (metaMap['avatarUrl'] ??
+                              metaMap['avatar'] ??
+                              profile.s('avatarUrl', profile.s('avatar')))
+                          .toString();
+                      if (avatar.isEmpty) {
+                        return CircleAvatar(
+                            radius: 34,
+                            backgroundColor: AppColors.accent,
+                            child: Text(
+                                auth.name.isEmpty
+                                    ? 'U'
+                                    : auth.name.characters.first.toUpperCase(),
+                                style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.primary)));
+                      }
+                      return ClipOval(
+                        child: RemoteImage(
+                            url: avatar, width: 68, height: 68),
+                      );
+                    }),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -145,6 +166,7 @@ class _CustomerProfileEditPageState
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _mobile = TextEditingController();
+  final _bio = TextEditingController();
   final _label = TextEditingController(text: 'Home');
   final _recipient = TextEditingController();
   final _addressPhone = TextEditingController();
@@ -153,16 +175,39 @@ class _CustomerProfileEditPageState
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _pincode = TextEditingController();
+  String _dob = ''; // ISO yyyy-MM-dd
+  String? _gender;
+  String? _occupationId;
+  String _occupationName = '';
+  String _avatarUrl = '';
+  List<Map<String, dynamic>> _occupations = [];
   bool _profileLoading = false;
   bool _addressLoading = false;
+  bool _avatarUploading = false;
   bool _isDefaultAddress = false;
   bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOccupations();
+  }
+
+  Future<void> _loadOccupations() async {
+    try {
+      final list = await ref.read(customerRepositoryProvider).occupations();
+      if (mounted) setState(() => _occupations = list);
+    } catch (_) {
+      // Occupations are optional — leave the dropdown empty on failure.
+    }
+  }
 
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
     _mobile.dispose();
+    _bio.dispose();
     _label.dispose();
     _recipient.dispose();
     _addressPhone.dispose();
@@ -185,12 +230,28 @@ class _CustomerProfileEditPageState
         future: ref.read(customerRepositoryProvider).profile(auth.id),
         builder: (context, snapshot) {
           final profile = snapshot.data;
-          if (profile != null && !_initialized) {
+          if (!_initialized &&
+              snapshot.connectionState == ConnectionState.done) {
             _initialized = true;
-            _name.text = profile.s('name', profile.s('fullName', auth.name));
-            _email.text = profile.s('email', auth.email);
+            final p = profile ?? <String, dynamic>{};
+            _name.text = p.s('name', p.s('fullName', auth.name));
+            _email.text = p.s('email', auth.email);
             _mobile.text =
-                _digits(profile.s('phone', profile.s('mobile', auth.mobile)));
+                _digits(p.s('phone', p.s('mobile', auth.mobile)));
+            final meta = p['metadata'];
+            final metaMap = meta is Map
+                ? Map<String, dynamic>.from(meta)
+                : <String, dynamic>{};
+            _dob = _isoDate(p.s('dob', metaMap.s('dob')));
+            final gender = p.s('gender', metaMap.s('gender'));
+            _gender = _genders.contains(gender) ? gender : null;
+            final occId = p.s('occupationId', p.s('occupation_id'));
+            _occupationId = occId.isEmpty ? null : occId;
+            _occupationName = metaMap['occupation']?.toString() ?? '';
+            _bio.text = metaMap['bio']?.toString() ?? '';
+            _avatarUrl = metaMap['avatarUrl']?.toString() ??
+                metaMap['avatar']?.toString() ??
+                p.s('avatarUrl', p.s('avatar'));
             _recipient.text = _name.text;
             _addressPhone.text = _mobile.text;
           }
@@ -201,6 +262,63 @@ class _CustomerProfileEditPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Center(
+                      child: Column(
+                        children: [
+                          Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              ClipOval(
+                                child: SizedBox(
+                                  width: 92,
+                                  height: 92,
+                                  child: _avatarUrl.isEmpty
+                                      ? Container(
+                                          color: AppColors.softGreen,
+                                          child: const Icon(Icons.person_rounded,
+                                              size: 44,
+                                              color: AppColors.primary),
+                                        )
+                                      : RemoteImage(
+                                          url: _avatarUrl,
+                                          width: 92,
+                                          height: 92),
+                                ),
+                              ),
+                              Material(
+                                color: AppColors.primary,
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap:
+                                      _avatarUploading ? null : _pickAvatar,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: _avatarUploading
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white))
+                                        : const Icon(Icons.camera_alt_rounded,
+                                            size: 16, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                              _avatarUploading
+                                  ? 'Uploading...'
+                                  : 'Change photo',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.muted)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     TextField(
                         controller: _name,
                         textCapitalization: TextCapitalization.words,
@@ -229,6 +347,72 @@ class _CustomerProfileEditPageState
                             labelText: 'Mobile *',
                             hintText: '10-digit number',
                             counterText: '')),
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: _pickDob,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.cake_rounded),
+                            labelText: 'Date of Birth'),
+                        child: Text(
+                          _dob.isEmpty ? 'Select date' : _prettyDate(_dob),
+                          style: TextStyle(
+                              color: _dob.isEmpty
+                                  ? AppColors.muted
+                                  : AppColors.brandDark),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _gender,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.wc_rounded),
+                          labelText: 'Gender'),
+                      items: _genders
+                          .map((g) =>
+                              DropdownMenuItem(value: g, child: Text(g)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _gender = v),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _occupations.any(
+                              (o) => o['id']?.toString() == _occupationId)
+                          ? _occupationId
+                          : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.work_rounded),
+                          labelText: 'Occupation'),
+                      items: _occupations
+                          .map((o) => DropdownMenuItem(
+                                value: o['id']?.toString(),
+                                child: Text(o['name']?.toString() ?? '',
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setState(() {
+                        _occupationId = v;
+                        _occupationName = _occupations.firstWhere(
+                              (o) => o['id']?.toString() == v,
+                              orElse: () => const {},
+                            )['name']?.toString() ??
+                            '';
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _bio,
+                        minLines: 2,
+                        maxLines: 4,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.info_outline_rounded),
+                            labelText: 'About',
+                            hintText: 'A short bio',
+                            alignLabelWithHint: true)),
                     const SizedBox(height: 14),
                     Align(
                       alignment: Alignment.center,
@@ -458,6 +642,12 @@ class _CustomerProfileEditPageState
         'name': name,
         'email': email,
         'phone': phone,
+        if (_dob.isNotEmpty) 'dob': _dob,
+        if (_gender != null) 'gender': _gender,
+        if (_occupationId != null) 'occupationId': _occupationId,
+        if (_occupationName.isNotEmpty) 'occupation': _occupationName,
+        if (_bio.text.trim().isNotEmpty) 'bio': _bio.text.trim(),
+        if (_avatarUrl.isNotEmpty) 'avatar': _avatarUrl,
       });
       ref.invalidate(customerAuthStateProvider);
       _snack('Profile updated');
@@ -466,6 +656,57 @@ class _CustomerProfileEditPageState
     } finally {
       if (mounted) setState(() => _profileLoading = false);
     }
+  }
+
+  static const _genders = ['Male', 'Female', 'Other'];
+
+  Future<void> _pickAvatar() async {
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 82);
+    if (picked == null) return;
+    setState(() => _avatarUploading = true);
+    try {
+      final url = await ref
+          .read(customerRepositoryProvider)
+          .uploadAvatar(File(picked.path));
+      if (url.isNotEmpty && mounted) setState(() => _avatarUrl = url);
+    } catch (_) {
+      _snack('Could not upload photo. Please try again.');
+    } finally {
+      if (mounted) setState(() => _avatarUploading = false);
+    }
+  }
+
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    DateTime initial = DateTime(now.year - 20);
+    final parsed = DateTime.tryParse(_dob);
+    if (parsed != null) initial = parsed;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1920),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (picked != null) {
+      setState(() => _dob =
+          '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}');
+    }
+  }
+
+  /// Normalises any incoming date (ISO or with time) to `yyyy-MM-dd`.
+  String _isoDate(String value) {
+    if (value.isEmpty) return '';
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return '';
+    return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Displays `yyyy-MM-dd` as `dd-MM-yyyy` (matches the user web).
+  String _prettyDate(String iso) {
+    final parts = iso.split('-');
+    if (parts.length != 3) return iso;
+    return '${parts[2]}-${parts[1]}-${parts[0]}';
   }
 
   Future<void> _saveAddress(String customerId) async {
@@ -538,11 +779,17 @@ class CustomerWalletPage extends ConsumerWidget {
     return CustomerScaffold(
       title: 'Wallet',
       showBack: true,
-      child: FutureBuilder<(Map<String, dynamic>?, List<Map<String, dynamic>>)>(
+      child: FutureBuilder<(Map<String, dynamic>, List<Map<String, dynamic>>)>(
         future: _data(ref, auth.id),
         builder: (context, snapshot) {
-          final profile = snapshot.data?.$1 ?? {};
+          final reward = snapshot.data?.$1 ?? {};
           final txns = snapshot.data?.$2 ?? [];
+          final buckets = reward['buckets'] is List
+              ? (reward['buckets'] as List)
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : <Map<String, dynamic>>[];
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -550,17 +797,58 @@ class CustomerWalletPage extends ConsumerWidget {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Wallet Points',
+                      const Text('Reward points',
                           style: TextStyle(color: AppColors.muted)),
                       const SizedBox(height: 4),
                       Text(
-                          '${profile.n('displayAmount', profile.n('balance', profile.n('wallet_points'))).round()} pts',
+                          '${reward.n('displayAmount', reward.n('balance', reward.n('points'))).round()} pts',
                           style: const TextStyle(
                               fontSize: 34,
                               color: AppColors.primary,
                               fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      Text(
+                          'Earned ${reward.n('earned', reward.n('totalEarned')).round()} · Redeemed ${reward.n('redeemed', reward.n('totalRedeemed')).round()}',
+                          style: const TextStyle(color: AppColors.muted)),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => context.push('/app/payment'),
+                              child: const Text('Redeem at checkout'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => context.push('/app/referrals'),
+                              child: const Text('Refer & earn'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ]),
               ),
+              if (buckets.isNotEmpty) ...[
+                const SectionHeader(title: 'Point buckets'),
+                ...buckets.map((b) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AppCard(
+                        child: Row(
+                          children: [
+                            Expanded(
+                                child: Text(b.s('type', b.s('label', 'Bucket')),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800))),
+                            Text('${b.n('balance', b.n('points')).round()} pts',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      ),
+                    )),
+              ],
               const SectionHeader(title: 'Transactions'),
               if (txns.isEmpty)
                 const EmptyState(
@@ -599,10 +887,10 @@ class CustomerWalletPage extends ConsumerWidget {
     );
   }
 
-  Future<(Map<String, dynamic>?, List<Map<String, dynamic>>)> _data(
+  Future<(Map<String, dynamic>, List<Map<String, dynamic>>)> _data(
       WidgetRef ref, String id) async {
     final repo = ref.read(customerRepositoryProvider);
-    return (await repo.profile(id), await repo.walletTransactions(id));
+    return (await repo.rewardPoints(id), await repo.walletTransactions(id));
   }
 }
 
@@ -757,10 +1045,10 @@ class CustomerReferralPage extends ConsumerWidget {
     return CustomerScaffold(
       title: 'Referrals',
       showBack: true,
-      child: FutureBuilder<(Map<String, dynamic>?, List<Map<String, dynamic>>)>(
+      child: FutureBuilder<(String, List<Map<String, dynamic>>)>(
         future: _data(ref, auth.id),
         builder: (context, snapshot) {
-          final profile = snapshot.data?.$1 ?? {};
+          final code = snapshot.data?.$1 ?? '';
           final referrals = snapshot.data?.$2 ?? [];
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -773,11 +1061,50 @@ class CustomerReferralPage extends ConsumerWidget {
                           style: TextStyle(color: AppColors.muted)),
                       const SizedBox(height: 8),
                       SelectableText(
-                        profile.s('referral_code', profile.s('referralCode')),
+                        code.isEmpty ? '—' : code,
                         style: const TextStyle(
                             fontSize: 24,
                             color: AppColors.primary,
                             fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: code.isEmpty
+                                  ? null
+                                  : () async {
+                                      await Clipboard.setData(
+                                          ClipboardData(text: code));
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(const SnackBar(
+                                                content: Text('Code copied')));
+                                      }
+                                    },
+                              icon: const Icon(Icons.copy_rounded),
+                              label: const Text('Copy'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: code.isEmpty
+                                  ? null
+                                  : () async {
+                                      final text =
+                                          'Join Planext4u with my referral code $code and earn rewards!';
+                                      final uri = Uri.parse(
+                                          'https://wa.me/?text=${Uri.encodeComponent(text)}');
+                                      await launchUrl(uri,
+                                          mode: LaunchMode.externalApplication);
+                                    },
+                              icon: const Icon(Icons.share_rounded),
+                              label: const Text('Share'),
+                            ),
+                          ),
+                        ],
                       ),
                     ]),
               ),
@@ -836,10 +1163,17 @@ class CustomerReferralPage extends ConsumerWidget {
     );
   }
 
-  Future<(Map<String, dynamic>?, List<Map<String, dynamic>>)> _data(
+  Future<(String, List<Map<String, dynamic>>)> _data(
       WidgetRef ref, String id) async {
     final repo = ref.read(customerRepositoryProvider);
-    return (await repo.profile(id), await repo.referrals(id));
+    final codeRow = await repo.myReferralCode();
+    final code = (codeRow == null)
+        ? ''
+        : codeRow.s('referralCode', codeRow.s('referral_code'));
+    final profile = await repo.profile(id) ?? {};
+    final fallback =
+        code.isNotEmpty ? code : profile.s('referral_code', profile.s('referralCode'));
+    return (fallback, await repo.referrals(id));
   }
 }
 
@@ -851,9 +1185,31 @@ class CustomerKYCPage extends ConsumerStatefulWidget {
 }
 
 class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
-  final _docType = TextEditingController(text: 'aadhaar');
+  String _docType = 'aadhaar';
   final _docNumber = TextEditingController();
+  String? _fileUrl;
   bool _loading = false;
+
+  @override
+  void dispose() {
+    _docNumber.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    setState(() => _loading = true);
+    try {
+      final url = await ref
+          .read(customerRepositoryProvider)
+          .uploadSocialFile(File(picked.path));
+      if (mounted) setState(() => _fileUrl = url);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -868,17 +1224,36 @@ class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
           AppCard(
             child: Column(
               children: [
-                TextField(
-                    controller: _docType,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.badge_rounded),
-                        hintText: 'Document type')),
+                DropdownButtonFormField<String>(
+                  initialValue: _docType,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.badge_rounded),
+                      labelText: 'Document type'),
+                  items: const [
+                    DropdownMenuItem(value: 'aadhaar', child: Text('Aadhaar')),
+                    DropdownMenuItem(value: 'pan', child: Text('PAN')),
+                  ],
+                  onChanged: (v) => setState(() => _docType = v ?? 'aadhaar'),
+                ),
                 const SizedBox(height: 12),
                 TextField(
                     controller: _docNumber,
                     decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.numbers_rounded),
                         hintText: 'Document number')),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : _pickFile,
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: Text(_fileUrl == null
+                      ? 'Upload document image'
+                      : 'Document attached'),
+                ),
+                if (_fileUrl != null) ...[
+                  const SizedBox(height: 8),
+                  RemoteImage(
+                      url: _fileUrl, height: 120, width: double.infinity),
+                ],
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: _loading
@@ -888,8 +1263,9 @@ class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
                           await ref
                               .read(customerRepositoryProvider)
                               .submitKyc(auth.id, {
-                            'document_type': _docType.text.trim(),
+                            'document_type': _docType,
                             'document_number': _docNumber.text.trim(),
+                            if (_fileUrl != null) 'url': _fileUrl,
                           });
                           if (mounted) setState(() => _loading = false);
                           if (context.mounted) {
@@ -897,7 +1273,7 @@ class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
                                 const SnackBar(content: Text('KYC submitted')));
                           }
                         },
-                  icon: const Icon(Icons.upload_file_rounded),
+                  icon: const Icon(Icons.verified_user_rounded),
                   label: Text(_loading ? 'Submitting...' : 'Submit KYC'),
                 ),
               ],
@@ -919,10 +1295,16 @@ class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
                       .map((doc) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
-                              child: Row(children: [
-                            Expanded(child: Text(doc.s('document_type'))),
-                            StatusBadge(doc.s('status', 'pending'))
-                          ]))))
+                              child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(doc.s('document_type')),
+                            subtitle: Text(doc.s('documentNumber',
+                                doc.s('document_number'))),
+                            trailing: StatusBadge(doc.s('status', 'pending')),
+                            onTap: doc.s('url').isEmpty
+                                ? null
+                                : () => launchUrl(Uri.parse(doc.s('url'))),
+                          ))))
                       .toList());
             },
           ),

@@ -120,6 +120,8 @@ class CustomerApi {
       _api.getList('/api/v1/profile/me/service-wishlist', auth: true);
   Future<Map<String, dynamic>> referralInfo() =>
       _api.getJson('/api/v1/profile/me/referrals', auth: true);
+  Future<Map<String, dynamic>> referralCode() =>
+      _api.getJson('/api/v1/profile/me/referral-code', auth: true);
   Future<Map<String, dynamic>> rewardPoints() =>
       _api.getJson('/api/v1/profile/me/reward-points', auth: true);
   Future<Map<String, dynamic>> walletSummary() =>
@@ -225,6 +227,8 @@ class CustomerApi {
       });
   Future<Map<String, dynamic>> classifiedItem(String id) =>
       _api.getJson('/api/v1/content/classified/$id');
+  Future<List<Map<String, dynamic>>> classifiedCategories() =>
+      _api.getList('/api/v1/content/classified/categories');
   Future<Map<String, dynamic>> createClassified(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/content/classified', body: body, auth: true);
   Future<Map<String, dynamic>> homeContent() =>
