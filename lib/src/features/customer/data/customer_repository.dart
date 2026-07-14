@@ -717,6 +717,7 @@ class CustomerRepository {
         'unitPrice':
             product.n('price', product.n('sellPrice', product.n('finalPrice'))),
         'vendorId': product.s('vendor_id', product.s('vendorId')),
+        if (variantId != null && variantId.isNotEmpty) 'variationId': variantId,
         'metadata': {
           'selectedAttributes': selectedAttributes,
           'variantId': variantId
@@ -1037,6 +1038,13 @@ class CustomerRepository {
     final merged = {...product, ...row};
     final productId =
         merged.s('productId', merged.s('product_id', merged.s('id')));
+    final meta = merged['metadata'] is Map
+        ? Map<String, dynamic>.from(merged['metadata'] as Map)
+        : <String, dynamic>{};
+    final variantId = merged.s(
+        'variationId',
+        merged.s(
+            'variation_id', meta.s('variantId', meta.s('variationId'))));
     return CartItem(
       id: merged.s('itemId', merged.s('item_id', productId)),
       productId: productId,
@@ -1048,6 +1056,7 @@ class CustomerRepository {
       image: merged.s('image', merged.s('thumbnailUrl')),
       tax: merged.n('tax'),
       discount: merged.n('discount', merged.n('discountAmount')),
+      variantId: variantId.isEmpty ? null : variantId,
     );
   }
 
