@@ -45,8 +45,14 @@ class CustomerRepository {
     final q = search?.trim() ?? '';
     List<Map<String, dynamic>> rows;
     if (q.isNotEmpty) {
-      // /browse/products ignores `q`/`sort`; catalog search is the search path.
-      rows = await _gateway.searchCatalog(query: q, type: 'product', limit: 50);
+      // Catalog search returns mixed types; keep products only (web parity).
+      final raw =
+          await _gateway.searchCatalog(query: q, type: 'product', limit: 50);
+      rows = raw
+          .where((row) =>
+              row.s('type', 'product').toLowerCase() == 'product' ||
+              row['type'] == null)
+          .toList();
     } else {
       rows = await _gateway.browseProducts(
           categoryId: category, limit: 50);
@@ -107,8 +113,17 @@ class CustomerRepository {
 
   Future<List<Map<String, dynamic>>> services(
       {String? category, String? search}) async {
-    final rows =
-        await _gateway.services(categoryId: category, query: search, limit: 50);
+    final q = search?.trim() ?? '';
+    List<Map<String, dynamic>> rows;
+    if (q.isNotEmpty) {
+      final raw = await _gateway.searchCatalog(query: q, limit: 50);
+      rows = raw
+          .where((row) => row.s('type').toLowerCase() == 'service')
+          .toList();
+    } else {
+      rows = await _gateway.services(
+          categoryId: category, query: null, limit: 50);
+    }
     return rows.map(_normalizeService).toList();
   }
 
@@ -130,10 +145,18 @@ class CustomerRepository {
     required String addressId,
     String? addressLabel,
     String? notes,
+    String? vendorId,
   }) async {
+    final resolvedVendor = (vendorId != null && vendorId.trim().isNotEmpty)
+        ? vendorId.trim()
+        : await resolveVendorIdForService(service);
+    if (resolvedVendor == null || resolvedVendor.isEmpty) {
+      throw const ApiException(
+          'This service is not linked to a provider yet.');
+    }
     await _gateway.createServiceBooking(
       {
-        'vendorId': service.s('vendor_id', service.s('vendorId')),
+        'vendorId': resolvedVendor,
         'serviceId': service.s('id', service.s('serviceId')),
         'bookingDate': date.toIso8601String().split('T').first,
         'timeSlot': timeSlot,
@@ -146,14 +169,54 @@ class CustomerRepository {
     );
   }
 
+  /// Same resolve order as user-web `resolveServiceVendor.ts`.
+  Future<String?> resolveVendorIdForService(Map<String, dynamic> service) async {
+    final explicit = service.s('vendor_id', service.s('vendorId')).trim();
+    if (explicit.isNotEmpty) return explicit;
+    final serviceId = service.s('id', service.s('serviceId'));
+    if (serviceId.isEmpty) return null;
+    try {
+      final offers = await _gateway.serviceVendorOffers(serviceId);
+      for (final offer in offers) {
+        final vendor = offer['vendor'];
+        if (vendor is Map) {
+          final id = vendor['id']?.toString().trim() ?? '';
+          if (id.isNotEmpty) return id;
+        }
+        final vid = offer.s('vendorId', offer.s('vendor_id'));
+        if (vid.isNotEmpty) return vid;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<List<Map<String, dynamic>>> availableSlots({
     String? vendorId,
     String? serviceId,
     String? date,
   }) async {
     if (!await apiSession.hasToken()) return [];
-    return _gateway.availableSlots(
-        vendorId: vendorId, serviceId: serviceId, date: date);
+    final v = vendorId?.trim() ?? '';
+    if (v.isEmpty) return [];
+    final rows = await _gateway.availableSlots(
+        vendorId: v, serviceId: serviceId, date: date);
+    // Keep only bookable slots; normalize label/value like web.
+    return rows
+        .where((row) => row['available'] != false)
+        .map((row) {
+          final value = row.s(
+              'value',
+              row.s('timeSlot',
+                  row.s('slot', row.s('start', row.s('time')))));
+          final label = row.s('label', value);
+          return {
+            ...row,
+            'value': value,
+            'label': label.isNotEmpty ? label : value,
+          };
+        })
+        .where((row) => (row['value'] as String).isNotEmpty)
+        .toList();
   }
 
   Future<Map<String, dynamic>?> vendor(String id) async {
@@ -168,14 +231,27 @@ class CustomerRepository {
 
   Future<List<Map<String, dynamic>>> orders(String customerId) async {
     if (!await apiSession.hasToken()) return [];
-    final id = await apiSession.customerId() ?? customerId;
-    if (id.isEmpty) return [];
-    try {
-      final rows = await _gateway.customerOrders(id);
-      return rows.map(_normalizeOrder).toList();
-    } catch (_) {
-      return [];
+    // Match web: list by JWT customer_id/sub (orders are created under that id).
+    final jwtId = customerIdFromAccessToken(await apiSession.accessToken());
+    final prefsId = await apiSession.customerId();
+    final ids = <String>[
+      if (jwtId != null && jwtId.isNotEmpty) jwtId,
+      if (prefsId != null && prefsId.isNotEmpty) prefsId,
+      if (customerId.isNotEmpty) customerId,
+    ];
+    final seen = <String>{};
+    Object? lastError;
+    for (final id in ids) {
+      if (!seen.add(id)) continue;
+      try {
+        final rows = await _gateway.customerOrders(id);
+        return rows.map(_normalizeOrder).toList();
+      } catch (e) {
+        lastError = e;
+      }
     }
+    if (lastError != null) throw lastError;
+    return [];
   }
 
   Future<List<Map<String, dynamic>>> bookings(String customerId) async {
@@ -207,12 +283,17 @@ class CustomerRepository {
             data) ??
         data;
     final profile = _normalizeProfile(raw);
-    // Persist customer id from profile when session is missing it.
-    final pid = profile.s('id', profile.s('customerId'));
-    if (pid.isNotEmpty) {
-      final prefsId = await apiSession.customerId();
-      if (prefsId == null || prefsId.isEmpty) {
-        await apiSession.setCustomerId(pid);
+    // Persist commerce customer id from JWT when missing (never clobber JWT with profile id).
+    final jwtId = customerIdFromAccessToken(await apiSession.accessToken());
+    if (jwtId != null && jwtId.isNotEmpty) {
+      await apiSession.setCustomerId(jwtId);
+    } else {
+      final pid = profile.s('id', profile.s('customerId'));
+      if (pid.isNotEmpty) {
+        final prefsId = await apiSession.customerId();
+        if (prefsId == null || prefsId.isEmpty) {
+          await apiSession.setCustomerId(pid);
+        }
       }
     }
     await apiSession.saveProfile(profile);
@@ -232,19 +313,19 @@ class CustomerRepository {
       addressCount = (await customerAddresses(customerId)).length;
     } catch (_) {}
     try {
-      adsCount = (await classifieds()).length;
+      adsCount = 0; // "my ads" API not wired; don't count public classified browse
     } catch (_) {}
     try {
-      final wallet = await _gateway.walletSummary();
-      final walletObj = apiObject(wallet) ?? wallet;
-      points = walletObj.n('displayAmount',
-          walletObj.n('balance', walletObj.n('points')));
+      final reward = await rewardPoints(customerId);
+      points = reward.n(
+          'displayAmount', reward.n('balance', reward.n('points')));
     } catch (_) {}
     if (points == 0) {
       try {
-        final reward = await rewardPoints(customerId);
-        points = reward.n(
-            'displayAmount', reward.n('balance', reward.n('points')));
+        final wallet = await _gateway.walletSummary();
+        final walletObj = apiObject(wallet) ?? wallet;
+        points = walletObj.n('displayAmount',
+            walletObj.n('balance', walletObj.n('points')));
       } catch (_) {}
     }
     return {
@@ -370,23 +451,58 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> walletTransactions(
       String customerId) async {
     if (!await apiSession.hasToken()) return [];
-    final data = await _gateway.walletSummary();
-    return apiItems(data['recentTransactions'] ??
-        data['transactions'] ??
-        data['items'] ??
-        data);
+    // Web primary path: GET /me/reward-points → recentHistory
+    try {
+      final reward = await _gateway.rewardPoints();
+      final history = apiItems(reward['recentHistory'] ??
+          reward['history'] ??
+          reward['recentTransactions'] ??
+          reward['transactions']);
+      if (history.isNotEmpty) return history;
+    } catch (_) {}
+    // Optional legacy wallet endpoint — do not fail the page if missing.
+    try {
+      final data = await _gateway.walletSummary();
+      return apiItems(data['recentTransactions'] ??
+          data['recentHistory'] ??
+          data['transactions'] ??
+          data['items'] ??
+          data);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> rewardPoints(String customerId) async {
+    if (!await apiSession.hasToken()) return {};
+    final data = await _gateway.rewardPoints();
+    final history = apiItems(data['recentHistory'] ?? data['history']);
+    num earned = data.n('earned', data.n('totalEarned'));
+    num redeemed = data.n('redeemed', data.n('totalRedeemed'));
+    if (earned == 0 && redeemed == 0 && history.isNotEmpty) {
+      for (final row in history) {
+        final pts = row.n('points', row.n('amount'));
+        if (pts >= 0) {
+          earned += pts;
+        } else {
+          redeemed += pts.abs();
+        }
+      }
+    }
+    return {
+      ...data,
+      'points': data['balance'] ?? data['points'] ?? 0,
+      'balance': data['balance'] ?? data['points'] ?? 0,
+      'earned': earned,
+      'redeemed': redeemed,
+      'recentHistory': history,
+    };
   }
 
   Future<List<Map<String, dynamic>>> referrals(String customerId) async {
     if (!await apiSession.hasToken()) return [];
     final data = await _gateway.referralInfo();
     return apiItems(data['referrals'] ?? data['items'] ?? data);
-  }
-
-  Future<Map<String, dynamic>> rewardPoints(String customerId) async {
-    if (!await apiSession.hasToken()) return {};
-    final data = await _gateway.rewardPoints();
-    return {...data, 'points': data['balance'] ?? data['points'] ?? 0};
   }
 
   Future<List<Map<String, dynamic>>> kycDocuments(String customerId) async {
@@ -720,7 +836,11 @@ class CustomerRepository {
         if (variantId != null && variantId.isNotEmpty) 'variationId': variantId,
         'metadata': {
           'selectedAttributes': selectedAttributes,
-          'variantId': variantId
+          'variantId': variantId,
+          'productName': product.s('title', product.s('name')),
+          'productImage': product.s('image', product.s('thumbnailUrl')),
+          'vendorName':
+              product.s('vendor_name', product.s('vendorName')),
         },
       });
       await _saveCart([]);
@@ -1005,12 +1125,19 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> wishlistProducts() async {
     if (await apiSession.hasToken()) {
       final rows = await _gateway.wishlist();
-      final products = rows
-          .map((row) => row['product'] is Map
-              ? Map<String, dynamic>.from(row['product'] as Map)
-              : row)
-          .toList();
-      return products.map(_normalizeProduct).toList();
+      final products = <Map<String, dynamic>>[];
+      for (final row in rows) {
+        if (row['product'] is Map) {
+          products.add(_normalizeProduct(
+              Map<String, dynamic>.from(row['product'] as Map)));
+          continue;
+        }
+        final productId = row.s('productId', row.s('product_id', row.s('id')));
+        if (productId.isEmpty) continue;
+        final hydrated = await product(productId);
+        if (hydrated != null) products.add(hydrated);
+      }
+      return products;
     }
     final ids = (await wishlist()).toList();
     final products = <Map<String, dynamic>>[];
@@ -1036,24 +1163,38 @@ class CustomerRepository {
         ? Map<String, dynamic>.from(row['product'] as Map)
         : <String, dynamic>{};
     final merged = {...product, ...row};
-    final productId =
-        merged.s('productId', merged.s('product_id', merged.s('id')));
     final meta = merged['metadata'] is Map
         ? Map<String, dynamic>.from(merged['metadata'] as Map)
         : <String, dynamic>{};
+    // Line UUID from commerce API (`id`) — required for DELETE/PATCH cart item.
+    final lineId = merged.s('id', merged.s('itemId', merged.s('item_id')));
+    final productId = merged.s('productId', merged.s('product_id'));
     final variantId = merged.s(
         'variationId',
         merged.s(
             'variation_id', meta.s('variantId', meta.s('variationId'))));
+    final title = merged.s(
+        'title',
+        merged.s(
+            'name',
+            merged.s(
+                'productName', meta.s('productName', meta.s('title')))));
+    final image = merged.s(
+        'image',
+        merged.s(
+            'thumbnailUrl',
+            meta.s('productImage', meta.s('thumbnailUrl', meta.s('image')))));
+    final vendor = merged.s(
+        'vendorName', merged.s('vendor_name', meta.s('vendorName')));
     return CartItem(
-      id: merged.s('itemId', merged.s('item_id', productId)),
-      productId: productId,
-      title: merged.s('title', merged.s('name', merged.s('productName'))),
+      id: lineId.isNotEmpty ? lineId : productId,
+      productId: productId.isNotEmpty ? productId : lineId,
+      title: title.isNotEmpty ? title : 'Item',
       price: merged.n('unitPrice', merged.n('price', merged.n('finalPrice'))),
       qty: merged.i('quantity', merged.i('qty', 1)),
-      vendor: merged.s('vendorName', merged.s('vendor_name')),
+      vendor: vendor,
       vendorId: merged.s('vendorId', merged.s('vendor_id')),
-      image: merged.s('image', merged.s('thumbnailUrl')),
+      image: image.isEmpty ? null : image,
       tax: merged.n('tax'),
       discount: merged.n('discount', merged.n('discountAmount')),
       variantId: variantId.isEmpty ? null : variantId,
@@ -1200,7 +1341,10 @@ class CustomerRepository {
     return {
       ...row,
       'id': row.s('id', row.s('postId')),
-      'user_id': row.s('user_id', row.s('userId', author.s('id'))),
+      'user_id': row.s(
+          'user_id',
+          row.s('authorId',
+              row.s('userId', author.s('id', author.s('userId'))))),
       'username': row.s(
           'username',
           row.s(
@@ -1222,10 +1366,14 @@ class CustomerRepository {
               'thumbnailUrl',
               'thumbnail_url'
             ])),
-      'likes_count':
-          row.i('likes_count', row.i('like_count', row.i('likesCount'))),
+      'likes_count': row.i(
+          'likes_count',
+          row.i('like_count',
+              row.i('likesCount', row.i('likeCount')))),
       'comments_count': row.i(
-          'comments_count', row.i('comment_count', row.i('commentsCount'))),
+          'comments_count',
+          row.i('comment_count',
+              row.i('commentsCount', row.i('commentCount')))),
       'liked': row['liked'] == true ||
           row['isLiked'] == true ||
           row['hasLiked'] == true,
@@ -1336,18 +1484,29 @@ class CustomerRepository {
     };
   }
 
-  Map<String, dynamic> _normalizeBooking(Map<String, dynamic> row) => {
-        ...row,
-        'id': row.s('id', row.s('bookingId')),
-        'service_id': row.s('service_id', row.s('serviceId')),
-        'service_name':
-            row.s('service_name', row.s('serviceName', row.s('serviceTitle'))),
-        'vendor_name': row.s('vendor_name', row.s('vendorName')),
-        'booking_date': row.s('booking_date', row.s('bookingDate')),
-        'time_slot': row.s('time_slot', row.s('timeSlot')),
-        'total_amount': row.n('total_amount', row.n('totalAmount')),
-        'status': row.s('status', 'pending'),
-      };
+  Map<String, dynamic> _normalizeBooking(Map<String, dynamic> row) {
+    final meta = row['metadata'] is Map
+        ? Map<String, dynamic>.from(row['metadata'] as Map)
+        : <String, dynamic>{};
+    return {
+      ...row,
+      'id': row.s('id', row.s('bookingId')),
+      'service_id': row.s('service_id', row.s('serviceId')),
+      'service_name': row.s(
+          'service_name',
+          row.s(
+              'serviceName',
+              row.s(
+                  'serviceTitle',
+                  meta.s('serviceName', meta.s('serviceTitle'))))),
+      'vendor_name':
+          row.s('vendor_name', row.s('vendorName', meta.s('vendorName'))),
+      'booking_date': row.s('booking_date', row.s('bookingDate')),
+      'time_slot': row.s('time_slot', row.s('timeSlot')),
+      'total_amount': row.n('total_amount', row.n('totalAmount')),
+      'status': row.s('status', 'pending'),
+    };
+  }
   Map<String, dynamic> _normalizeAddress(Map<String, dynamic> row) => {
         ...row,
         'id': row.s('id', row.s('addressId')),

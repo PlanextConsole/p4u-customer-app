@@ -150,10 +150,14 @@ class CustomerApi {
       _api.postJson('/api/v1/commerce/cart/quote',
           body: {'redeemPoints': redeemPoints}, auth: true);
   Future<Map<String, dynamic>> createOrderFromCart(
-          {int redeemPoints = 0, String? vendorId}) =>
-      _api.postJson('/api/v1/commerce/orders/from-cart',
-          body: {'redeemPoints': redeemPoints, 'vendorId': vendorId},
-          auth: true);
+      {int redeemPoints = 0, String? vendorId}) {
+    final body = <String, dynamic>{};
+    if (redeemPoints > 0) body['redeemPoints'] = redeemPoints;
+    final v = vendorId?.trim();
+    if (v != null && v.isNotEmpty) body['vendorId'] = v;
+    return _api.postJson('/api/v1/commerce/orders/from-cart',
+        body: body, auth: true);
+  }
   Future<Map<String, dynamic>> createDirectOrder(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/orders', body: body, auth: true);
   Future<List<Map<String, dynamic>>> customerOrders(String customerId) =>
@@ -176,10 +180,16 @@ class CustomerApi {
   Future<List<Map<String, dynamic>>> vendorBookingsFromCommerce() =>
       _api.getList('/api/v1/commerce/bookings/vendor', auth: true);
   Future<List<Map<String, dynamic>>> availableSlots(
-          {String? vendorId, String? serviceId, String? date}) =>
-      _api.getList('/api/v1/commerce/bookings/available-slots',
-          query: {'vendorId': vendorId, 'serviceId': serviceId, 'date': date},
-          auth: true);
+      {String? vendorId, String? serviceId, String? date}) async {
+    final data = await _api.getJson(
+        '/api/v1/commerce/bookings/available-slots',
+        query: {'vendorId': vendorId, 'serviceId': serviceId, 'date': date},
+        auth: true);
+    final body = apiObject(data) ?? data;
+    if (body['slots'] is List) return apiItems(body['slots']);
+    if (data['slots'] is List) return apiItems(data['slots']);
+    return apiItems(body);
+  }
   Future<Map<String, dynamic>> createReview(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/reviews', body: body, auth: true);
   Future<List<Map<String, dynamic>>> reviews(

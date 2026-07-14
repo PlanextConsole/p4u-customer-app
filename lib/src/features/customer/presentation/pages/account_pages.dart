@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/api_client.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/map_ext.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -890,7 +891,20 @@ class CustomerWalletPage extends ConsumerWidget {
   Future<(Map<String, dynamic>, List<Map<String, dynamic>>)> _data(
       WidgetRef ref, String id) async {
     final repo = ref.read(customerRepositoryProvider);
-    return (await repo.rewardPoints(id), await repo.walletTransactions(id));
+    Map<String, dynamic> reward = {};
+    List<Map<String, dynamic>> txns = [];
+    try {
+      reward = await repo.rewardPoints(id);
+    } catch (_) {}
+    try {
+      txns = await repo.walletTransactions(id);
+    } catch (_) {
+      txns = apiItems(reward['recentHistory']);
+    }
+    if (txns.isEmpty) {
+      txns = apiItems(reward['recentHistory']);
+    }
+    return (reward, txns);
   }
 }
 
@@ -909,6 +923,13 @@ class CustomerBookingsPage extends ConsumerWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load bookings',
+              message: snapshot.error.toString(),
+            );
           }
           final bookings = snapshot.data ?? [];
           if (bookings.isEmpty) {
@@ -1169,10 +1190,13 @@ class CustomerReferralPage extends ConsumerWidget {
     final codeRow = await repo.myReferralCode();
     final code = (codeRow == null)
         ? ''
-        : codeRow.s('referralCode', codeRow.s('referral_code'));
+        : codeRow.s('code',
+            codeRow.s('referralCode', codeRow.s('referral_code')));
     final profile = await repo.profile(id) ?? {};
-    final fallback =
-        code.isNotEmpty ? code : profile.s('referral_code', profile.s('referralCode'));
+    final fallback = code.isNotEmpty
+        ? code
+        : profile.s('referral_code',
+            profile.s('referralCode', profile.s('code')));
     return (fallback, await repo.referrals(id));
   }
 }

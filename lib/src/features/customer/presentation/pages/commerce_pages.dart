@@ -1327,10 +1327,17 @@ class CustomerCartPage extends ConsumerWidget {
                         _QtyStepper(
                           qty: item.qty,
                           onChanged: (qty) async {
-                            await ref
-                                .read(customerRepositoryProvider)
-                                .updateCartItem(item.id, qty);
-                            ref.invalidate(cartSummaryProvider);
+                            try {
+                              await ref
+                                  .read(customerRepositoryProvider)
+                                  .updateCartItem(item.id, qty);
+                              ref.invalidate(cartSummaryProvider);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())));
+                              }
+                            }
                           },
                         ),
                       ],
@@ -1617,6 +1624,11 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         address: address,
         paymentMode: _payMethod,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Order placed: ${order.s('orderRef', order.s('id'))}')));
+      }
       if (_payMethod == 'online') {
         final intent = await repo.createPaymentIntentForOrder(
           orderId: order.s('id'),
@@ -1672,6 +1684,12 @@ class CustomerOrdersPage extends ConsumerWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return EmptyState(
+                icon: Icons.error_outline_rounded,
+                title: 'Could not load orders',
+                message: snapshot.error.toString());
           }
           final orders = snapshot.data ?? [];
           if (orders.isEmpty) {

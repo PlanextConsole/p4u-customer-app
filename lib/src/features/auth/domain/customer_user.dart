@@ -42,13 +42,17 @@ class CustomerUser {
 
   factory CustomerUser.fromApi(Map<String, dynamic> profile,
       {String? fallbackId, String? userId}) {
-    final id = (profile['id'] ??
+    final profileId = (profile['id'] ??
             profile['customerId'] ??
             profile['customer_id'] ??
-            fallbackId ??
-            userId ??
             '')
-        .toString();
+        .toString()
+        .trim();
+    // Prefer JWT commerce identity (web parity) when provided as fallbackId.
+    final commerceId = (fallbackId ?? userId ?? '').toString().trim();
+    final id = commerceId.isNotEmpty
+        ? commerceId
+        : (profileId.isNotEmpty ? profileId : '');
     final name = (profile['fullName'] ??
             profile['full_name'] ??
             profile['name'] ??
@@ -59,7 +63,7 @@ class CustomerUser {
     final mobile = (profile['mobile'] ?? profile['phone'] ?? '').toString();
     return CustomerUser(
       id: id,
-      customerId: id,
+      customerId: profileId.isNotEmpty ? profileId : id,
       supabaseUid: userId,
       name: name,
       email: email,

@@ -116,9 +116,11 @@ class CustomerServiceDetailPage extends ConsumerStatefulWidget {
 class _CustomerServiceDetailPageState
     extends ConsumerState<CustomerServiceDetailPage> {
   DateTime _date = DateTime.now().add(const Duration(days: 1));
-  String? _slot;
+  String? _slot; // slot value sent to API
   String? _addressId;
-  List<String> _slots = const [];
+  String? _vendorId;
+  String? _vendorError;
+  List<Map<String, String>> _slots = const []; // {label,value}
   List<Map<String, dynamic>> _addresses = const [];
   final _notes = TextEditingController();
   bool _loadingSlots = false;
@@ -146,31 +148,65 @@ class _CustomerServiceDetailPageState
         });
       }
     }
+    final vendorId = await ref
+        .read(customerRepositoryProvider)
+        .resolveVendorIdForService(service);
+    if (!mounted) return;
+    setState(() {
+      _vendorId = vendorId;
+      _vendorError = (vendorId == null || vendorId.isEmpty)
+          ? 'This service is not linked to a provider yet.'
+          : null;
+    });
     await _loadSlots(service);
   }
 
   Future<void> _loadSlots(Map<String, dynamic> service) async {
     setState(() => _loadingSlots = true);
     try {
+      final vendorId = _vendorId ??
+          await ref
+              .read(customerRepositoryProvider)
+              .resolveVendorIdForService(service);
+      if (vendorId == null || vendorId.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _slots = const [];
+          _slot = null;
+          _vendorError = 'This service is not linked to a provider yet.';
+        });
+        return;
+      }
       final date = _date.toIso8601String().split('T').first;
       final rows = await ref.read(customerRepositoryProvider).availableSlots(
-            vendorId: service.s('vendor_id', service.s('vendorId')),
+            vendorId: vendorId,
             serviceId: service.s('id', service.s('serviceId')),
             date: date,
           );
-      final slots = <String>[];
+      final slots = <Map<String, String>>[];
       for (final row in rows) {
-        final label = row.s('label',
-            row.s('timeSlot', row.s('slot', row.s('start', row.s('time')))));
-        if (label.isNotEmpty) slots.add(label);
+        final value = row.s('value');
+        final label = row.s('label', value);
+        if (value.isEmpty) continue;
+        slots.add({'label': label.isNotEmpty ? label : value, 'value': value});
       }
       if (!mounted) return;
       setState(() {
+        _vendorId = vendorId;
+        _vendorError = null;
         _slots = slots;
-        if (_slot == null || !slots.contains(_slot)) {
-          _slot = slots.isNotEmpty ? slots.first : null;
+        if (_slot == null || !slots.any((s) => s['value'] == _slot)) {
+          _slot = slots.isNotEmpty ? slots.first['value'] : null;
         }
       });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _slots = const [];
+          _slot = null;
+          _vendorError = e.toString();
+        });
+      }
     } finally {
       if (mounted) setState(() => _loadingSlots = false);
     }
@@ -253,18 +289,28 @@ class _CustomerServiceDetailPageState
                       )
                     else
                       DropdownButtonFormField<String>(
-                        key: ValueKey('slot-${_slots.join('|')}'),
-                        initialValue: _slots.contains(_slot) ? _slot : null,
+                        key: ValueKey(
+                            'slot-${_slots.map((s) => s['value']).join('|')}'),
+                        initialValue:
+                            _slots.any((s) => s['value'] == _slot) ? _slot : null,
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.schedule_rounded),
                             hintText: 'Time Slot'),
                         items: _slots
-                            .map((s) =>
-                                DropdownMenuItem(value: s, child: Text(s)))
+                            .map((s) => DropdownMenuItem(
+                                  value: s['value'],
+                                  child: Text(s['label'] ?? s['value'] ?? ''),
+                                ))
                             .toList(),
                         onChanged: (value) => setState(() => _slot = value),
                       ),
-                    if (_slots.isEmpty && !_loadingSlots)
+                    if (_vendorError != null && !_loadingSlots)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(_vendorError!,
+                            style: const TextStyle(color: Colors.red)),
+                      )
+                    else if (_slots.isEmpty && !_loadingSlots)
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text('No slots available for this date.',
@@ -325,25 +371,34 @@ class _CustomerServiceDetailPageState
                                     a.s('id', a.s('addressId')) == _addressId,
                                 orElse: () => <String, dynamic>{},
                               );
-                              await ref
-                                  .read(customerRepositoryProvider)
-                                  .bookService(
-                                    customerId: auth.id,
-                                    service: service,
-                                    date: _date,
-                                    timeSlot: _slot!,
-                                    addressId: _addressId!,
-                                    addressLabel: addr.s(
-                                        'label',
-                                        addr.s('addressLine1',
-                                            addr.s('address'))),
-                                    notes: _notes.text.trim(),
-                                  );
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content:
-                                            Text('Service booking created')));
+                              try {
+                                await ref
+                                    .read(customerRepositoryProvider)
+                                    .bookService(
+                                      customerId: auth.id,
+                                      service: service,
+                                      date: _date,
+                                      timeSlot: _slot!,
+                                      addressId: _addressId!,
+                                      vendorId: _vendorId,
+                                      addressLabel: addr.s(
+                                          'label',
+                                          addr.s('addressLine1',
+                                              addr.s('address'))),
+                                      notes: _notes.text.trim(),
+                                    );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Service booking created')));
+                                  context.push('/app/bookings');
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.toString())));
+                                }
                               }
                             },
                       icon: const Icon(Icons.check_circle_rounded),

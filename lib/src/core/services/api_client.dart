@@ -422,6 +422,8 @@ List<Map<String, dynamic>> apiItems(Object? value) {
       'wishlist',
       'transactions',
       'notifications',
+      'slots',
+      'recentHistory',
       'posts',
       'feed',
       'stories',

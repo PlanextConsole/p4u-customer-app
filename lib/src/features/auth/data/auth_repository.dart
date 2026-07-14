@@ -40,9 +40,19 @@ class AuthRepository {
       final profile =
           _profileFrom(await _api.getJson('/api/v1/profile/me', auth: true));
       await apiSession.saveProfile(profile);
-      final cid = (profile['id'] ?? profile['customerId'])?.toString();
-      if (cid != null && cid.isNotEmpty) {
-        await apiSession.setCustomerId(cid);
+      // Commerce stores orders under JWT customer_id/sub (same as web).
+      // Never overwrite that with profile DB id or My Orders go empty.
+      final jwtId = customerIdFromAccessToken(await apiSession.accessToken());
+      if (jwtId != null && jwtId.isNotEmpty) {
+        await apiSession.setCustomerId(jwtId);
+      } else {
+        final cid = (profile['id'] ?? profile['customerId'])?.toString();
+        if (cid != null && cid.isNotEmpty) {
+          final existing = await apiSession.customerId();
+          if (existing == null || existing.isEmpty) {
+            await apiSession.setCustomerId(cid);
+          }
+        }
       }
       return CustomerUser.fromApi(profile,
           fallbackId: await apiSession.customerId());

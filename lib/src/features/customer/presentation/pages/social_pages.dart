@@ -347,8 +347,14 @@ class _SocialExplorePageState extends ConsumerState<SocialExplorePage> {
                       .map((u) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
-                              onTap: () => context
-                                  .go('/app/social/profile/${u.s('user_id')}'),
+                              onTap: () {
+                                final id = u.s(
+                                    'user_id',
+                                    u.s('userId',
+                                        u.s('id', u.s('authorId'))));
+                                if (id.isEmpty) return;
+                                context.go('/app/social/profile/$id');
+                              },
                               child: _ProfileRow(profile: u))))
                       .toList());
             },
@@ -398,7 +404,9 @@ class SocialProfilePage extends ConsumerWidget {
                         backgroundColor: AppColors.accent,
                         child: Text(
                             profile
-                                .s('display_name', auth.name)
+                                .s('display_name',
+                                    profile.s('userName',
+                                        profile.s('name', auth.name)))
                                 .characters
                                 .first
                                 .toUpperCase(),
@@ -407,7 +415,9 @@ class SocialProfilePage extends ConsumerWidget {
                                 color: AppColors.primary,
                                 fontWeight: FontWeight.w900))),
                     const SizedBox(height: 10),
-                    Text(profile.s('display_name', auth.name),
+                    Text(
+                        profile.s('display_name',
+                            profile.s('userName', profile.s('name', auth.name))),
                         style: const TextStyle(
                             fontWeight: FontWeight.w900, fontSize: 20)),
                     Text(
@@ -417,9 +427,22 @@ class SocialProfilePage extends ConsumerWidget {
                     Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _Count('Posts', profile.i('posts_count')),
-                          _Count('Followers', profile.i('followers_count')),
-                          _Count('Following', profile.i('following_count')),
+                          _Count(
+                              'Posts',
+                              profile.i('posts_count',
+                                  profile.i('postCount', profile.i('posts')))),
+                          _Count(
+                              'Followers',
+                              profile.i(
+                                  'followers_count',
+                                  profile.i('followerCount',
+                                      profile.i('followers')))),
+                          _Count(
+                              'Following',
+                              profile.i(
+                                  'following_count',
+                                  profile.i('followingCount',
+                                      profile.i('following')))),
                         ]),
                     const SizedBox(height: 12),
                     Row(children: [
@@ -636,8 +659,23 @@ class SocialDMPage extends ConsumerWidget {
                       child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.chat_rounded),
-                          title: Text(c.s('title', 'Conversation')),
-                          subtitle: Text(shortDate(c['updated_at'])))))
+                          title: Text(c.s(
+                              'participantName',
+                              c.s('participant_name',
+                                  c.s('title', 'Conversation')))),
+                          subtitle: Text(() {
+                            final last = c.s(
+                                'lastMessage',
+                                c.s('last_message',
+                                    c.s('preview', c.s('message'))));
+                            final when = c['lastMessageAt'] ??
+                                c['last_message_at'] ??
+                                c['updated_at'] ??
+                                c['updatedAt'];
+                            final date = shortDate(when);
+                            if (last.isEmpty) return date;
+                            return date.isEmpty ? last : '$last · $date';
+                          }()))))
                   .toList());
         },
       ),
