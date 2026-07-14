@@ -51,7 +51,12 @@ class ApiSession {
   Future<void> setCustomerId(String id) async {
     if (id.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_customerIdKey, id.trim());
+    final next = id.trim();
+    final prev = prefs.getString(_customerIdKey);
+    // Only notify on real changes — unconditional notify + currentCustomer()
+    // caused an infinite auth stream loop that kept recreating FutureBuilders.
+    if (prev == next) return;
+    await prefs.setString(_customerIdKey, next);
     _changes.add(null);
   }
 

@@ -1669,18 +1669,30 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
   }
 }
 
-class CustomerOrdersPage extends ConsumerWidget {
+class CustomerOrdersPage extends ConsumerStatefulWidget {
   const CustomerOrdersPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerOrdersPage> createState() => _CustomerOrdersPageState();
+}
+
+class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
+  Future<List<Map<String, dynamic>>>? _future;
+  String? _customerId;
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const _LoginRequired();
+    if (_future == null || _customerId != auth.id) {
+      _customerId = auth.id;
+      _future = ref.read(customerRepositoryProvider).orders(auth.id);
+    }
     return CustomerScaffold(
       title: 'Orders',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).orders(auth.id),
+        future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

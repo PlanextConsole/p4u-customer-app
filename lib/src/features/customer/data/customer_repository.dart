@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -451,52 +452,110 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> walletTransactions(
       String customerId) async {
     if (!await apiSession.hasToken()) return [];
-    // Web primary path: GET /me/reward-points → recentHistory
+    List<Map<String, dynamic>> history = [];
+    // Web: prefer GET /me/wallet recentTransactions, fall back to reward-points.
     try {
-      final reward = await _gateway.rewardPoints();
-      final history = apiItems(reward['recentHistory'] ??
-          reward['history'] ??
-          reward['recentTransactions'] ??
-          reward['transactions']);
-      if (history.isNotEmpty) return history;
+      final wallet = await _gateway.walletSummary();
+      history = apiItems(wallet['recentTransactions'] ??
+          wallet['recentHistory'] ??
+          wallet['transactions'] ??
+          wallet['items']);
     } catch (_) {}
-    // Optional legacy wallet endpoint — do not fail the page if missing.
-    try {
-      final data = await _gateway.walletSummary();
-      return apiItems(data['recentTransactions'] ??
-          data['recentHistory'] ??
-          data['transactions'] ??
-          data['items'] ??
-          data);
-    } catch (_) {
-      return [];
+    if (history.isEmpty) {
+      try {
+        final reward = await _gateway.rewardPoints();
+        history = apiItems(reward['recentHistory'] ??
+            reward['history'] ??
+            reward['recentTransactions'] ??
+            reward['transactions']);
+      } catch (_) {}
     }
+    return history.where((row) => !_isPointsReversal(row)).toList();
   }
 
   Future<Map<String, dynamic>> rewardPoints(String customerId) async {
     if (!await apiSession.hasToken()) return {};
-    final data = await _gateway.rewardPoints();
-    final history = apiItems(data['recentHistory'] ?? data['history']);
-    num earned = data.n('earned', data.n('totalEarned'));
-    num redeemed = data.n('redeemed', data.n('totalRedeemed'));
-    if (earned == 0 && redeemed == 0 && history.isNotEmpty) {
-      for (final row in history) {
-        final pts = row.n('points', row.n('amount'));
-        if (pts >= 0) {
-          earned += pts;
-        } else {
-          redeemed += pts.abs();
-        }
+    Map<String, dynamic> data = {};
+    try {
+      data = await _gateway.rewardPoints();
+    } catch (_) {}
+
+    // Web wallet page overlays displayAmount from GET /me/wallet when available.
+    Map<String, dynamic>? wallet;
+    try {
+      wallet = await _gateway.walletSummary();
+    } catch (_) {}
+
+    var history = apiItems(
+        (wallet != null
+                ? (wallet['recentTransactions'] ??
+                    wallet['recentHistory'] ??
+                    wallet['transactions'])
+                : null) ??
+            data['recentHistory'] ??
+            data['history']);
+    history = history.where((row) => !_isPointsReversal(row)).toList();
+
+    num balance = 0;
+    if (wallet != null) {
+      balance = wallet.n(
+          'displayAmount', wallet.n('balance', wallet.n('points')));
+    }
+    if (balance == 0) {
+      balance = data.n('balance', data.n('displayAmount', data.n('points')));
+    }
+
+    num earned = 0;
+    num redeemed = 0;
+    for (final row in history) {
+      final pts = row.n('points', row.n('amount'));
+      if (pts > 0) {
+        earned += pts;
+      } else if (pts < 0) {
+        redeemed += pts.abs();
       }
     }
+
+    // Match web bucket cards (positive earns by type only).
+    const bucketDefs = [
+      ('Welcome Bonus', 'welcome_bonus'),
+      ('Post Share', 'post_share'),
+      ('Vendor Referral', 'referral_bonus'),
+      ('Customer Referral', 'customer_referral'),
+      ('Post Liked', 'post_like'),
+      ('Story Liked', 'story_like'),
+    ];
+    final buckets = bucketDefs.map((def) {
+      final type = def.$2;
+      num pts = 0;
+      for (final row in history) {
+        if (row.s('type').toLowerCase() == type &&
+            row.n('points', row.n('amount')) > 0) {
+          pts += row.n('points', row.n('amount'));
+        }
+      }
+      return {'label': def.$1, 'type': type, 'points': pts, 'balance': pts};
+    }).toList();
+
     return {
       ...data,
-      'points': data['balance'] ?? data['points'] ?? 0,
-      'balance': data['balance'] ?? data['points'] ?? 0,
+      if (wallet != null) ...wallet,
+      'points': balance,
+      'balance': balance,
+      'displayAmount': balance,
       'earned': earned,
+      'totalEarned': earned,
       'redeemed': redeemed,
+      'totalRedeemed': redeemed,
       'recentHistory': history,
+      'buckets': buckets,
     };
+  }
+
+  bool _isPointsReversal(Map<String, dynamic> row) {
+    final type = row.s('type').toLowerCase();
+    final desc = row.s('description', row.s('reason')).toLowerCase();
+    return type.contains('reversal') || desc.contains('reversal');
   }
 
   Future<List<Map<String, dynamic>>> referrals(String customerId) async {
@@ -1125,6 +1184,21 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> wishlistProducts() async {
     if (await apiSession.hasToken()) {
       final rows = await _gateway.wishlist();
+      final productIds = <String>{};
+      for (final row in rows) {
+        if (row['product'] is Map) continue;
+        final productId = row.s('productId', row.s('product_id'));
+        if (productId.isNotEmpty) productIds.add(productId);
+      }
+      final productMap = <String, Map<String, dynamic>>{};
+      await Future.wait(productIds.map((pid) async {
+        try {
+          final hydrated =
+              await product(pid).timeout(const Duration(seconds: 8));
+          if (hydrated != null) productMap[pid] = hydrated;
+        } catch (_) {}
+      }));
+
       final products = <Map<String, dynamic>>[];
       for (final row in rows) {
         if (row['product'] is Map) {
@@ -1134,17 +1208,37 @@ class CustomerRepository {
         }
         final productId = row.s('productId', row.s('product_id', row.s('id')));
         if (productId.isEmpty) continue;
-        final hydrated = await product(productId);
-        if (hydrated != null) products.add(hydrated);
+        final hydrated = productMap[productId];
+        // Web merges wishlist metadata even when catalog hydrate fails.
+        final fallbackTitle = hydrated == null
+            ? 'Product'
+            : hydrated.s('title', hydrated.s('name', 'Product'));
+        final fallbackImage = hydrated == null ? '' : hydrated.s('image');
+        final fallbackPrice = hydrated == null
+            ? 0
+            : hydrated.n('price', hydrated.n('finalPrice'));
+        products.add(_normalizeProduct({
+          if (hydrated != null) ...hydrated,
+          'id': productId,
+          'productId': productId,
+          'name': row.s('productName', row.s('name', fallbackTitle)),
+          'title': row.s('productName', row.s('title', fallbackTitle)),
+          'image':
+              row.s('productImage', row.s('image', fallbackImage)),
+          'price':
+              row.n('productPrice', row.n('price', fallbackPrice)),
+        }));
       }
       return products;
     }
     final ids = (await wishlist()).toList();
     final products = <Map<String, dynamic>>[];
-    for (final id in ids) {
-      final item = await product(id);
-      if (item != null) products.add(item);
-    }
+    await Future.wait(ids.map((id) async {
+      try {
+        final item = await product(id).timeout(const Duration(seconds: 8));
+        if (item != null) products.add(item);
+      } catch (_) {}
+    }));
     return products;
   }
 

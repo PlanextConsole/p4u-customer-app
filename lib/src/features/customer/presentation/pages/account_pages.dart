@@ -770,19 +770,41 @@ class _CustomerProfileEditPageState
   }
 }
 
-class CustomerWalletPage extends ConsumerWidget {
+class CustomerWalletPage extends ConsumerStatefulWidget {
   const CustomerWalletPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerWalletPage> createState() => _CustomerWalletPageState();
+}
+
+class _CustomerWalletPageState extends ConsumerState<CustomerWalletPage> {
+  Future<(Map<String, dynamic>, List<Map<String, dynamic>>)>? _future;
+  String? _customerId;
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
+    if (_future == null || _customerId != auth.id) {
+      _customerId = auth.id;
+      _future = _load(auth.id);
+    }
     return CustomerScaffold(
       title: 'Wallet',
       showBack: true,
       child: FutureBuilder<(Map<String, dynamic>, List<Map<String, dynamic>>)>(
-        future: _data(ref, auth.id),
+        future: _future,
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load wallet',
+              message: snapshot.error.toString(),
+            );
+          }
           final reward = snapshot.data?.$1 ?? {};
           final txns = snapshot.data?.$2 ?? [];
           final buckets = reward['buckets'] is List
@@ -832,14 +854,14 @@ class CustomerWalletPage extends ConsumerWidget {
                     ]),
               ),
               if (buckets.isNotEmpty) ...[
-                const SectionHeader(title: 'Point buckets'),
+                const SectionHeader(title: 'Points by activity'),
                 ...buckets.map((b) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: AppCard(
                         child: Row(
                           children: [
                             Expanded(
-                                child: Text(b.s('type', b.s('label', 'Bucket')),
+                                child: Text(b.s('label', b.s('type', 'Bucket')),
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w800))),
                             Text('${b.n('balance', b.n('points')).round()} pts',
@@ -888,8 +910,8 @@ class CustomerWalletPage extends ConsumerWidget {
     );
   }
 
-  Future<(Map<String, dynamic>, List<Map<String, dynamic>>)> _data(
-      WidgetRef ref, String id) async {
+  Future<(Map<String, dynamic>, List<Map<String, dynamic>>)> _load(
+      String id) async {
     final repo = ref.read(customerRepositoryProvider);
     Map<String, dynamic> reward = {};
     List<Map<String, dynamic>> txns = [];
@@ -908,18 +930,31 @@ class CustomerWalletPage extends ConsumerWidget {
   }
 }
 
-class CustomerBookingsPage extends ConsumerWidget {
+class CustomerBookingsPage extends ConsumerStatefulWidget {
   const CustomerBookingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerBookingsPage> createState() =>
+      _CustomerBookingsPageState();
+}
+
+class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
+  Future<List<Map<String, dynamic>>>? _future;
+  String? _customerId;
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
+    if (_future == null || _customerId != auth.id) {
+      _customerId = auth.id;
+      _future = ref.read(customerRepositoryProvider).bookings(auth.id);
+    }
     return CustomerScaffold(
       title: 'My Bookings',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).bookings(auth.id),
+        future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -996,7 +1031,11 @@ class CustomerBookingsPage extends ConsumerWidget {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                         content: Text('Booking cancelled')));
-                                context.go('/app/bookings');
+                                setState(() {
+                                  _future = ref
+                                      .read(customerRepositoryProvider)
+                                      .bookings(auth.id);
+                                });
                               }
                             },
                             icon: const Icon(Icons.cancel_outlined),
@@ -1016,23 +1055,43 @@ class CustomerBookingsPage extends ConsumerWidget {
   }
 }
 
-class CustomerWishlistPage extends ConsumerWidget {
+class CustomerWishlistPage extends ConsumerStatefulWidget {
   const CustomerWishlistPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerWishlistPage> createState() =>
+      _CustomerWishlistPageState();
+}
+
+class _CustomerWishlistPageState extends ConsumerState<CustomerWishlistPage> {
+  Future<List<Map<String, dynamic>>>? _future;
+  String? _customerId;
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
+    if (_future == null || _customerId != auth.id) {
+      _customerId = auth.id;
+      _future = ref.read(customerRepositoryProvider).wishlistProducts();
+    }
     return CustomerScaffold(
       title: 'Wishlist',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).wishlistProducts(),
+        future: _future,
         builder: (context, snapshot) {
-          final products = snapshot.data ?? [];
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+          if (snapshot.hasError) {
+            return EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load wishlist',
+              message: snapshot.error.toString(),
+            );
+          }
+          final products = snapshot.data ?? [];
           if (products.isEmpty) {
             return const EmptyState(
                 icon: Icons.favorite_rounded,
