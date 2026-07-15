@@ -351,6 +351,11 @@ class CustomerApi {
       _api.getList('/api/v1/social/stories/me', auth: true);
   Future<Map<String, dynamic>> createStory(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/social/stories', body: body, auth: true);
+  Future<Map<String, dynamic>> deleteStory(String storyId) =>
+      _api.deleteJson('/api/v1/social/stories/$storyId', auth: true);
+  Future<List<Map<String, dynamic>>> feedAds({int limit = 5}) =>
+      _api.getList('/api/v1/social/feed/ads',
+          query: {'limit': limit}, auth: true);
   Future<Map<String, dynamic>> uploadSocialMedia(File file) =>
       _api.uploadFile('/api/v1/social/upload', file, auth: true);
   Future<Map<String, dynamic>> uploadMultipleSocialMedia(List<File> files) =>

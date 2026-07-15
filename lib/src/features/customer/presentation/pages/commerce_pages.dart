@@ -1716,23 +1716,42 @@ class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final order = orders[index];
+              final orderItems = order['items'] is List
+                  ? (order['items'] as List).whereType<Map>().toList()
+                  : const <Map>[];
+              final firstImage = orderItems.isNotEmpty
+                  ? Map<String, dynamic>.from(orderItems.first).s('image')
+                  : '';
+              final itemCount = orderItems.length;
               return AppCard(
                 onTap: () => context.push('/app/orders/${order.s('id')}'),
                 child: Row(
                   children: [
-                    const Icon(Icons.receipt_long_rounded,
-                        color: AppColors.primary),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: firstImage.isNotEmpty
+                          ? RemoteImage(url: firstImage, width: 44, height: 44)
+                          : const SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: Icon(Icons.receipt_long_rounded,
+                                  color: AppColors.primary),
+                            ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(order.s('id'),
+                          Text(
+                              order.s('orderRef',
+                                  order.s('order_ref', order.s('id'))),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style:
                                   const TextStyle(fontWeight: FontWeight.w800)),
-                          Text(shortDate(order['created_at']),
+                          Text(
+                              '${shortDate(order['created_at'])} · $itemCount item${itemCount == 1 ? '' : 's'}',
                               style: const TextStyle(color: AppColors.muted)),
                         ],
                       ),
@@ -1795,7 +1814,9 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                   children: [
                     Row(children: [
                       Expanded(
-                          child: Text(order.s('id'),
+                          child: Text(
+                              order.s('orderRef', order.s('order_ref',
+                                  order.s('id'))),
                               style: const TextStyle(
                                   fontWeight: FontWeight.w900))),
                       StatusBadge(order.s('status', 'placed'))
@@ -1818,11 +1839,29 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                   child: AppCard(
                     child: Row(
                       children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: RemoteImage(
+                              url: item.s('image'), width: 48, height: 48),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
-                            child: Text(item.s('title'),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800))),
-                        Text('${item.i('qty', 1)} x ${money(item.n('price'))}'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.s('title'),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800)),
+                                const SizedBox(height: 2),
+                                Text(
+                                    '${item.i('qty', 1)} x ${money(item.n('price'))}',
+                                    style:
+                                        const TextStyle(color: AppColors.muted)),
+                              ],
+                            )),
+                        Text(money(item.n('price') * item.i('qty', 1)),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
                       ],
                     ),
                   ),

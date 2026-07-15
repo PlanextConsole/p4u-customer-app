@@ -163,6 +163,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/app/social/create',
           builder: (_, __) => const SocialCreatePostPage()),
       GoRoute(
+          path: '/app/social/add-story',
+          builder: (_, __) => const SocialAddStoryPage()),
+      GoRoute(
           path: '/app/social/profile',
           builder: (_, __) => const SocialProfilePage()),
       GoRoute(
@@ -221,6 +224,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/app/social/profile/:userId/followers',
           builder: (_, state) =>
               SocialFollowersPage(userId: state.pathParameters['userId']!)),
+      GoRoute(
+          path: '/app/social/profile/:userId/following',
+          builder: (_, state) => SocialFollowersPage(
+              userId: state.pathParameters['userId']!, following: true)),
+      GoRoute(
+          path: '/app/social/saved',
+          builder: (_, __) => const SocialSavedPostsPage()),
       GoRoute(
           path: '/app/social/edit-profile',
           builder: (_, __) => const SocialEditProfilePage()),

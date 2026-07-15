@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
@@ -34,18 +38,41 @@ class SocialFeedPage extends ConsumerWidget {
             onPressed: () => context.push('/app/social/messages'),
             icon: const Icon(Icons.send_rounded)),
       ],
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).socialFeed(),
+      child: FutureBuilder<List<List<Map<String, dynamic>>>>(
+        future: Future.wait([
+          ref.read(customerRepositoryProvider).socialFeed(),
+          ref.read(customerRepositoryProvider).socialFeedAds(),
+        ]),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final posts = snapshot.data ?? [];
+          final posts = snapshot.data?.isNotEmpty == true
+              ? snapshot.data![0]
+              : const <Map<String, dynamic>>[];
+          final ads = (snapshot.data?.length ?? 0) > 1
+              ? snapshot.data![1]
+              : const <Map<String, dynamic>>[];
+          // Interleave a sponsored ad after every 3rd post (web parity).
+          final feedChildren = <Widget>[];
+          var adIndex = 0;
+          for (var i = 0; i < posts.length; i++) {
+            feedChildren.add(Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SocialPostCard(post: posts[i])));
+            if ((i + 1) % 3 == 0 && adIndex < ads.length) {
+              feedChildren.add(Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: SponsoredAdCard(ad: ads[adIndex++])));
+            }
+          }
           return RefreshIndicator(
             onRefresh: () async {},
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                const _SocialStoryRail(),
+                const SizedBox(height: 12),
                 _SocialQuickNav(),
                 const SizedBox(height: 12),
                 if (posts.isEmpty)
@@ -54,9 +81,7 @@ class SocialFeedPage extends ConsumerWidget {
                       title: 'No posts yet',
                       message: 'Create the first Socio post.')
                 else
-                  ...posts.map((post) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SocialPostCard(post: post))),
+                  ...feedChildren,
               ],
             ),
           );
@@ -77,6 +102,7 @@ class SocialPostCard extends ConsumerStatefulWidget {
 class _SocialPostCardState extends ConsumerState<SocialPostCard> {
   late bool _liked;
   late bool _saved;
+  late bool _following;
   late int _likes;
 
   @override
@@ -85,6 +111,7 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
     final post = widget.post;
     _liked = post['liked'] == true;
     _saved = post['saved'] == true;
+    _following = post['is_following'] == true;
     _likes = post.i('likes_count', post.i('like_count'));
   }
 
@@ -104,6 +131,28 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
         post.s('media_type') == 'video' ||
         post.s('mediaType') == 'video';
     final postId = post.s('id');
+    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final myId = auth?.supabaseUid ?? auth?.id ?? '';
+    final isSelf =
+        post['is_self'] == true || (myId.isNotEmpty && post.s('user_id') == myId);
+    final avatar = post.s('avatar');
+    final category = post.s('category');
+    final tags = (post['tags'] is List)
+        ? (post['tags'] as List).map((e) => e.toString()).toList()
+        : const <String>[];
+    final linked = (post['linked_products'] is List)
+        ? (post['linked_products'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : const <Map<String, dynamic>>[];
+    final hideLikeCount = post['hide_like_count'] == true && !isSelf;
+    final commentPermission = post.s('comment_permission', 'everyone');
+    final canComment = commentPermission == 'none'
+        ? false
+        : commentPermission == 'followers'
+            ? (_following || isSelf)
+            : true;
     return AppCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -112,16 +161,39 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
           ListTile(
             onTap: () =>
                 context.push('/app/social/profile/${post.s('user_id')}'),
-            leading: const CircleAvatar(
-                backgroundColor: AppColors.accent,
-                child: Icon(Icons.person_rounded, color: AppColors.primary)),
+            leading: CircleAvatar(
+              backgroundColor: AppColors.accent,
+              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+              child: avatar.isEmpty
+                  ? const Icon(Icons.person_rounded, color: AppColors.primary)
+                  : null,
+            ),
             title: Text(post.s('username', 'Planext user'),
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             subtitle: Text(shortDate(post['created_at'])),
-            trailing: IconButton(
-                onPressed: () =>
-                    context.push('/app/social/post/${post.s('id')}'),
-                icon: const Icon(Icons.more_horiz_rounded)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isSelf)
+                  TextButton(
+                    onPressed: () => _toggleFollow(post.s('user_id')),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 0),
+                    ),
+                    child: Text(_following ? 'Following' : 'Follow',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _following
+                                ? AppColors.muted
+                                : AppColors.primary)),
+                  ),
+                IconButton(
+                    onPressed: () =>
+                        context.push('/app/social/post/${post.s('id')}'),
+                    icon: const Icon(Icons.more_horiz_rounded)),
+              ],
+            ),
           ),
           if (media.isNotEmpty)
             isVideo
@@ -138,6 +210,62 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
               children: [
                 Text(post.s('caption', post.s('content')),
                     style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (category.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text('Category: $category',
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 12)),
+                ],
+                if (tags.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(tags.map((t) => '#$t').join(' '),
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600)),
+                ],
+                if (linked.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 96,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final p in linked)
+                          GestureDetector(
+                            onTap: p.s('id').isEmpty
+                                ? null
+                                : () => context
+                                    .push('/app/product/${p.s('id')}'),
+                            child: Container(
+                              width: 80,
+                              margin: const EdgeInsets.only(right: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: RemoteImage(
+                                        url: p.s('image'),
+                                        width: 80,
+                                        height: 56),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(p.s('name', 'Product'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11)),
+                                  Text(money(p.n('price')),
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700)),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -149,16 +277,19 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
                               : Icons.favorite_border_rounded,
                           color: _liked ? Colors.red : null,
                         )),
-                    Text('$_likes'),
+                    if (!hideLikeCount) Text('$_likes'),
                     IconButton(
-                        onPressed: () =>
-                            context.push('/app/social/comments/$postId'),
+                        onPressed: canComment
+                            ? () => context.push('/app/social/comments/$postId')
+                            : null,
                         icon: const Icon(Icons.mode_comment_outlined)),
                     Text(
                         '${post.i('comments_count', post.i('comment_count'))}'),
                     IconButton(
                         onPressed: () => _share(postId),
                         icon: const Icon(Icons.share_outlined)),
+                    if (post.i('shares_count') > 0)
+                      Text('${post.i('shares_count')}'),
                     const Spacer(),
                     IconButton(
                         onPressed: () => _toggleSave(postId),
@@ -173,6 +304,22 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleFollow(String userId) async {
+    if (userId.isEmpty) return;
+    final repo = ref.read(customerRepositoryProvider);
+    final was = _following;
+    setState(() => _following = !was);
+    try {
+      if (was) {
+        await repo.unfollowSocialUser(userId);
+      } else {
+        await repo.followSocialUser(userId);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _following = was);
+    }
   }
 
   Future<void> _toggleLike(String postId) async {
@@ -242,9 +389,189 @@ class SocialCreatePostPage extends ConsumerStatefulWidget {
       _SocialCreatePostPageState();
 }
 
+/// Sponsored ad card interleaved into the feed (web SponsoredAdCard).
+class SponsoredAdCard extends StatelessWidget {
+  const SponsoredAdCard({required this.ad, super.key});
+  final Map<String, dynamic> ad;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = ad.s('image');
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(ad.s('advertiser', ad.s('title', 'Sponsored')),
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('Sponsored',
+                      style:
+                          TextStyle(fontSize: 10, color: AppColors.primary)),
+                ),
+              ],
+            ),
+          ),
+          if (image.isNotEmpty)
+            RemoteImage(
+                url: image, height: 200, width: double.infinity, borderRadius: 0),
+          if (ad.s('caption').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(ad.s('caption')),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Post categories — mirror web POST_CATEGORIES (SocialPage.tsx).
+const List<String> _kPostCategories = [
+  'Lifestyle',
+  'Shopping',
+  'Services',
+  'Classifieds',
+  'Food',
+  'Travel',
+  'Education',
+  'Business',
+  'Community',
+];
+
 class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
   final _caption = TextEditingController();
-  final _image = TextEditingController();
+  final _location = TextEditingController();
+  final _tags = TextEditingController();
+  final _productSearch = TextEditingController();
+
+  XFile? _picked;
+  bool _isVideo = false;
+  String? _category;
+  String _audience = 'public'; // public | private
+  String _commentPermission = 'everyone'; // everyone | followers | none
+  bool _hideLikeCount = false;
+  final List<Map<String, dynamic>> _linkedProducts = [];
+  List<Map<String, dynamic>> _searchResults = const [];
+  bool _searching = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    _location.dispose();
+    _tags.dispose();
+    _productSearch.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickMedia() async {
+    final file = await ImagePicker().pickMedia();
+    if (file == null) return;
+    final lower = file.path.toLowerCase();
+    setState(() {
+      _picked = file;
+      _isVideo = lower.endsWith('.mp4') ||
+          lower.endsWith('.mov') ||
+          lower.endsWith('.webm') ||
+          lower.endsWith('.m4v');
+    });
+  }
+
+  Future<void> _runProductSearch(String q) async {
+    if (q.trim().isEmpty) {
+      setState(() => _searchResults = const []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final rows =
+          await ref.read(customerRepositoryProvider).socialProductSearch(q);
+      if (mounted) setState(() => _searchResults = rows);
+    } catch (_) {
+      if (mounted) setState(() => _searchResults = const []);
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  void _toggleProduct(Map<String, dynamic> p) {
+    final id = p.s('id');
+    setState(() {
+      final existing = _linkedProducts.indexWhere((e) => e.s('id') == id);
+      if (existing >= 0) {
+        _linkedProducts.removeAt(existing);
+      } else {
+        _linkedProducts.add({
+          'id': id,
+          'name': p.s('title', p.s('name')),
+          'image': p.s('image'),
+          'price': p.n('price'),
+          'vendorId': p.s('vendor_id'),
+        });
+      }
+    });
+  }
+
+  Future<void> _submit(dynamic auth) async {
+    if (_busy) return;
+    if (_category == null) {
+      setState(() => _error = 'Please select a category');
+      return;
+    }
+    if (_picked == null) {
+      setState(() => _error = 'Please add a photo or video');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      final uploaded = await repo.uploadSocialMediaFile(File(_picked!.path));
+      final url = uploaded.s('url');
+      if (url.isEmpty) throw Exception('Upload failed');
+      final tags = _tags.text
+          .split(RegExp(r'[,\s#]+'))
+          .map((t) => t.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
+      await repo.createSocialPost(auth.supabaseUid ?? auth.id, {
+        'contentText': _caption.text.trim(),
+        'mediaUrls': [url],
+        'postType': uploaded.s('type', _isVideo ? 'video' : 'image'),
+        'visibility': _audience,
+        'location': _location.text.trim().isEmpty ? null : _location.text.trim(),
+        'tags': tags,
+        'category': _category,
+        'linkedProducts': _linkedProducts,
+        'hideLikeCount': _hideLikeCount,
+        'commentPermission': _commentPermission,
+      });
+      if (mounted) context.go('/app/social');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not create post: $e';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -258,35 +585,195 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
         children: [
           AppCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Media picker (required)
+                GestureDetector(
+                  onTap: _busy ? null : _pickMedia,
+                  child: Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: _picked == null
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add_photo_alternate_rounded,
+                                    size: 36, color: AppColors.muted),
+                                SizedBox(height: 6),
+                                Text('Add a photo or video',
+                                    style: TextStyle(color: AppColors.muted)),
+                              ],
+                            ),
+                          )
+                        : _isVideo
+                            ? const Center(
+                                child: Icon(Icons.videocam_rounded, size: 48))
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.file(File(_picked!.path),
+                                    fit: BoxFit.cover,
+                                    width: double.infinity),
+                              ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                     controller: _caption,
-                    minLines: 4,
+                    minLines: 3,
                     maxLines: 8,
                     decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.edit_rounded),
-                        hintText: 'What do you want to share?')),
+                        hintText: 'Write a caption…')),
+                const SizedBox(height: 12),
+                // Category (required)
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.category_rounded),
+                      hintText: 'Select a category'),
+                  items: [
+                    for (final c in _kPostCategories)
+                      DropdownMenuItem(value: c, child: Text(c)),
+                  ],
+                  onChanged: (v) => setState(() => _category = v),
+                ),
                 const SizedBox(height: 12),
                 TextField(
-                    controller: _image,
+                    controller: _location,
                     decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.image_rounded),
-                        hintText: 'Image URL optional')),
-                const SizedBox(height: 14),
+                        prefixIcon: Icon(Icons.location_on_outlined),
+                        hintText: 'Add location (optional)')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: _tags,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.tag_rounded),
+                        hintText: 'Tag people (@username), comma separated')),
+                const SizedBox(height: 16),
+                // Linked products
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Link products (optional)',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _productSearch,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    hintText: 'Search products to tag',
+                    suffixIcon: _searching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : null,
+                  ),
+                  onChanged: _runProductSearch,
+                ),
+                if (_searchResults.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final p in _searchResults)
+                          ListTile(
+                            dense: true,
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: RemoteImage(
+                                  url: p.s('image'), width: 40, height: 40),
+                            ),
+                            title: Text(p.s('title', p.s('name', 'Product')),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                            subtitle: Text(money(p.n('price'))),
+                            trailing: Icon(
+                              _linkedProducts.any((e) => e.s('id') == p.s('id'))
+                                  ? Icons.check_circle_rounded
+                                  : Icons.add_circle_outline_rounded,
+                              color: AppColors.primary,
+                            ),
+                            onTap: () => _toggleProduct(p),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (_linkedProducts.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final p in _linkedProducts)
+                          Chip(
+                            label: Text(p.s('name', 'Product')),
+                            onDeleted: () => _toggleProduct(p),
+                          ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                // Audience
+                DropdownButtonFormField<String>(
+                  initialValue: _audience,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.visibility_outlined),
+                      labelText: 'Audience'),
+                  items: const [
+                    DropdownMenuItem(value: 'public', child: Text('Public')),
+                    DropdownMenuItem(value: 'private', child: Text('Private')),
+                  ],
+                  onChanged: (v) => setState(() => _audience = v ?? 'public'),
+                ),
+                const SizedBox(height: 12),
+                // Comment permission
+                DropdownButtonFormField<String>(
+                  initialValue: _commentPermission,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.mode_comment_outlined),
+                      labelText: 'Who can comment'),
+                  items: const [
+                    DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
+                    DropdownMenuItem(
+                        value: 'followers', child: Text('Followers Only')),
+                    DropdownMenuItem(value: 'none', child: Text('No One')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _commentPermission = v ?? 'everyone'),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Hide like count'),
+                  value: _hideLikeCount,
+                  onChanged: (v) => setState(() => _hideLikeCount = v),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(_error!,
+                        style: const TextStyle(color: AppColors.danger)),
+                  ),
                 FilledButton.icon(
-                  onPressed: () async {
-                    await ref
-                        .read(customerRepositoryProvider)
-                        .createSocialPost(auth.supabaseUid ?? auth.id, {
-                      'caption': _caption.text.trim(),
-                      'content': _caption.text.trim(),
-                      if (_image.text.trim().isNotEmpty)
-                        'image_url': _image.text.trim(),
-                    });
-                    if (context.mounted) context.go('/app/social');
-                  },
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text('Post'),
+                  onPressed: _busy ? null : () => _submit(auth),
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send_rounded),
+                  label: Text(_busy ? 'Posting…' : 'Share'),
                 ),
               ],
             ),
@@ -431,26 +918,41 @@ class SocialProfilePage extends ConsumerWidget {
                               'Posts',
                               profile.i('posts_count',
                                   profile.i('postCount', profile.i('posts')))),
-                          _Count(
-                              'Followers',
-                              profile.i(
-                                  'followers_count',
-                                  profile.i('followerCount',
-                                      profile.i('followers')))),
-                          _Count(
-                              'Following',
-                              profile.i(
-                                  'following_count',
-                                  profile.i('followingCount',
-                                      profile.i('following')))),
+                          GestureDetector(
+                            onTap: () => context.push(
+                                '/app/social/profile/$target/followers'),
+                            child: _Count(
+                                'Followers',
+                                profile.i(
+                                    'followers_count',
+                                    profile.i('followerCount',
+                                        profile.i('followers')))),
+                          ),
+                          GestureDetector(
+                            onTap: () => context.push(
+                                '/app/social/profile/$target/following'),
+                            child: _Count(
+                                'Following',
+                                profile.i(
+                                    'following_count',
+                                    profile.i('followingCount',
+                                        profile.i('following')))),
+                          ),
                         ]),
                     const SizedBox(height: 12),
                     Row(children: [
                       Expanded(
-                          child: OutlinedButton(
-                              onPressed: () =>
-                                  context.push('/app/social/edit-profile'),
-                              child: const Text('Edit Profile'))),
+                        child: (target == (auth.supabaseUid ?? auth.id) ||
+                                profile['isSelf'] == true)
+                            ? OutlinedButton(
+                                onPressed: () =>
+                                    context.push('/app/social/edit-profile'),
+                                child: const Text('Edit Profile'))
+                            : _ProfileFollowButton(
+                                userId: target,
+                                initialFollowing:
+                                    profile['isFollowing'] == true),
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                           child: FilledButton(
@@ -463,11 +965,10 @@ class SocialProfilePage extends ConsumerWidget {
               ),
               const SectionHeader(title: 'Posts'),
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: ref.read(customerRepositoryProvider).socialFeed(),
+                future:
+                    ref.read(customerRepositoryProvider).socialUserPosts(target),
                 builder: (context, posts) {
-                  final rows = (posts.data ?? [])
-                      .where((p) => p.s('user_id') == target)
-                      .toList();
+                  final rows = posts.data ?? [];
                   if (rows.isEmpty) {
                     return const EmptyState(
                         icon: Icons.grid_on_rounded,
@@ -573,13 +1074,53 @@ class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
                 }
                 return ListView(
                     padding: const EdgeInsets.all(16),
-                    children: rows
-                        .map((c) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: AppCard(
-                                child: Text(
-                                    c.s('content', c.s('comment', c.s('contentText')))))))
-                        .toList());
+                    children: rows.map((c) {
+                      final avatar = c.s('avatar');
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: AppCard(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: AppColors.accent,
+                                backgroundImage: avatar.isNotEmpty
+                                    ? NetworkImage(avatar)
+                                    : null,
+                                child: avatar.isEmpty
+                                    ? const Icon(Icons.person_rounded,
+                                        size: 18, color: AppColors.primary)
+                                    : null,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(c.s('username', 'Planext user'),
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w700)),
+                                        const SizedBox(width: 8),
+                                        Text(shortDate(c['created_at']),
+                                            style: const TextStyle(
+                                                color: AppColors.muted,
+                                                fontSize: 11)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(c.s('content',
+                                        c.s('comment', c.s('contentText')))),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList());
               },
             ),
           ),
@@ -903,8 +1444,13 @@ class SocialReelsPage extends ConsumerWidget {
                 children: [
                   SocialVideo(url: url, height: double.infinity),
                   Positioned(
+                    right: 8,
+                    bottom: 90,
+                    child: _ReelActions(post: post),
+                  ),
+                  Positioned(
                     left: 16,
-                    right: 16,
+                    right: 72,
                     bottom: 24,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -935,37 +1481,878 @@ class SocialReelsPage extends ConsumerWidget {
   }
 }
 
-class SocialStoryViewerPage extends StatelessWidget {
+/// Right-side action rail for a reel: like / comment / share / save — the same
+/// endpoints as feed posts (web ReelCard).
+class _ReelActions extends ConsumerStatefulWidget {
+  const _ReelActions({required this.post});
+  final Map<String, dynamic> post;
+
+  @override
+  ConsumerState<_ReelActions> createState() => _ReelActionsState();
+}
+
+class _ReelActionsState extends ConsumerState<_ReelActions> {
+  late bool _liked = widget.post['liked'] == true;
+  late bool _saved = widget.post['saved'] == true;
+  late int _likes = widget.post.i('likes_count', widget.post.i('like_count'));
+
+  Future<void> _like() async {
+    final repo = ref.read(customerRepositoryProvider);
+    final id = widget.post.s('id');
+    final was = _liked;
+    setState(() {
+      _liked = !was;
+      _likes += was ? -1 : 1;
+      if (_likes < 0) _likes = 0;
+    });
+    try {
+      was ? await repo.unlikeSocialPost(id) : await repo.likeSocialPost(id);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _liked = was;
+          _likes += was ? 1 : -1;
+        });
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    final repo = ref.read(customerRepositoryProvider);
+    final id = widget.post.s('id');
+    final was = _saved;
+    setState(() => _saved = !was);
+    try {
+      was ? await repo.unsaveSocialPost(id) : await repo.saveSocialPost(id);
+    } catch (_) {
+      if (mounted) setState(() => _saved = was);
+    }
+  }
+
+  Widget _btn(IconData icon, String label, VoidCallback onTap,
+      {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          IconButton(
+              onPressed: onTap,
+              icon: Icon(icon, color: color ?? Colors.white, size: 30)),
+          if (label.isNotEmpty)
+            Text(label, style: const TextStyle(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.post.s('id');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _btn(_liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            '$_likes', _like,
+            color: _liked ? Colors.red : Colors.white),
+        _btn(Icons.mode_comment_outlined,
+            '${widget.post.i('comments_count', widget.post.i('comment_count'))}',
+            () => context.push('/app/social/comments/$id')),
+        _btn(Icons.share_outlined, '', () async {
+          final messenger = ScaffoldMessenger.of(context);
+          try {
+            await ref.read(customerRepositoryProvider).shareSocialPost(id);
+            messenger.showSnackBar(
+                const SnackBar(content: Text('Post shared')));
+          } catch (_) {}
+        }),
+        _btn(_saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded, '',
+            _save),
+      ],
+    );
+  }
+}
+
+/// Horizontal story rail shown at the top of the feed. First circle is
+/// "Your Story" (opens the composer / your segments), followed by other users'
+/// stories with a teal ring when unviewed — mirrors the web story rail.
+class _SocialStoryRail extends ConsumerStatefulWidget {
+  const _SocialStoryRail();
+
+  @override
+  ConsumerState<_SocialStoryRail> createState() => _SocialStoryRailState();
+}
+
+class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
+  late Future<Map<String, dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(customerRepositoryProvider).socialStories();
+  }
+
+  void _reload() {
+    setState(() {
+      _future = ref.read(customerRepositoryProvider).socialStories();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final myId = auth?.supabaseUid ?? auth?.id ?? '';
+    return SizedBox(
+      height: 96,
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final data = snapshot.data ?? const {};
+          final mine = (data['mine'] as List?) ?? const [];
+          final groups = (data['groups'] as List?) ?? const [];
+          final hasMine = mine.isNotEmpty;
+          return ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _StoryAvatar(
+                label: 'Your Story',
+                imageUrl: hasMine
+                    ? Map<String, dynamic>.from(mine.first as Map).s('media_url')
+                    : '',
+                unviewed: false,
+                showAdd: true,
+                onTap: () async {
+                  if (hasMine) {
+                    await context.push('/app/social/stories/$myId');
+                  } else {
+                    await context.push('/app/social/add-story');
+                  }
+                  _reload();
+                },
+                onAdd: () async {
+                  await context.push('/app/social/add-story');
+                  _reload();
+                },
+              ),
+              for (final raw in groups)
+                Builder(builder: (context) {
+                  final g = Map<String, dynamic>.from(raw as Map);
+                  final segs = (g['segments'] as List?) ?? const [];
+                  final unviewed = segs
+                      .any((e) => (e as Map)['viewed'] != true);
+                  final cover = segs.isNotEmpty
+                      ? Map<String, dynamic>.from(segs.first as Map)
+                          .s('media_url')
+                      : g.s('avatar');
+                  return _StoryAvatar(
+                    label: g.s('username', 'Planext user'),
+                    imageUrl: cover,
+                    unviewed: unviewed,
+                    onTap: () async {
+                      await context.push('/app/social/stories/${g.s('user_id')}');
+                      _reload();
+                    },
+                  );
+                }),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StoryAvatar extends StatelessWidget {
+  const _StoryAvatar({
+    required this.label,
+    required this.imageUrl,
+    required this.unviewed,
+    required this.onTap,
+    this.showAdd = false,
+    this.onAdd,
+  });
+
+  final String label;
+  final String imageUrl;
+  final bool unviewed;
+  final bool showAdd;
+  final VoidCallback? onTap;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2.5),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: unviewed ? AppColors.primary : AppColors.border,
+                      width: 2.5,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: imageUrl.isNotEmpty
+                        ? RemoteImage(url: imageUrl, width: 56, height: 56)
+                        : Container(
+                            width: 56,
+                            height: 56,
+                            color: AppColors.card,
+                            child: const Icon(Icons.person_rounded,
+                                color: AppColors.muted),
+                          ),
+                  ),
+                ),
+                if (showAdd)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: GestureDetector(
+                      onTap: onAdd,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        padding: const EdgeInsets.all(2),
+                        child: const Icon(Icons.add,
+                            size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Add Story composer: pick an image/video, optional text overlay, upload and
+/// create the story. Mirrors the web CreateStoryModal fields.
+class SocialAddStoryPage extends ConsumerStatefulWidget {
+  const SocialAddStoryPage({super.key});
+
+  @override
+  ConsumerState<SocialAddStoryPage> createState() => _SocialAddStoryPageState();
+}
+
+class _SocialAddStoryPageState extends ConsumerState<SocialAddStoryPage> {
+  final _caption = TextEditingController();
+  XFile? _picked;
+  bool _isVideo = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick() async {
+    final file = await ImagePicker().pickMedia();
+    if (file == null) return;
+    final lower = file.path.toLowerCase();
+    setState(() {
+      _picked = file;
+      _isVideo = lower.endsWith('.mp4') ||
+          lower.endsWith('.mov') ||
+          lower.endsWith('.webm') ||
+          lower.endsWith('.m4v');
+    });
+  }
+
+  Future<void> _share() async {
+    if (_picked == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      final uploaded = await repo.uploadSocialMediaFile(File(_picked!.path));
+      final url = uploaded.s('url');
+      if (url.isEmpty) throw Exception('Upload failed');
+      await repo.createSocialStory(
+        mediaUrl: url,
+        mediaType: uploaded.s('type', _isVideo ? 'video' : 'image'),
+        textOverlay: _caption.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Story added')));
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not add story: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    if (auth == null) return const LoginRequiredPage();
+    return CustomerScaffold(
+      title: 'Add Story',
+      showBack: true,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GestureDetector(
+                  onTap: _busy ? null : _pick,
+                  child: AspectRatio(
+                    aspectRatio: 9 / 16,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: _picked == null
+                          ? const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add_a_photo_rounded,
+                                      color: Colors.white70, size: 40),
+                                  SizedBox(height: 8),
+                                  Text('Tap to add a photo or video',
+                                      style: TextStyle(color: Colors.white70)),
+                                ],
+                              ),
+                            )
+                          : _isVideo
+                              ? const Center(
+                                  child: Icon(Icons.videocam_rounded,
+                                      color: Colors.white, size: 48))
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.file(File(_picked!.path),
+                                      fit: BoxFit.cover),
+                                ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _caption,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.text_fields_rounded),
+                    hintText: 'Add a caption (optional)',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text('Story expires after 24 hours',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _picked == null || _busy ? null : _share,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send_rounded),
+                  label: Text(_busy ? 'Sharing…' : 'Share to Story'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-screen story viewer: segmented progress bars, tap left/right to
+/// navigate, auto-advance, view tracking, and delete for your own story.
+class SocialStoryViewerPage extends ConsumerStatefulWidget {
   const SocialStoryViewerPage({required this.userId, super.key});
   final String userId;
 
   @override
-  Widget build(BuildContext context) => _SocialPlaceholder(
-      title: 'Stories',
-      icon: Icons.auto_stories_rounded,
-      message: 'Stories for $userId.');
+  ConsumerState<SocialStoryViewerPage> createState() =>
+      _SocialStoryViewerPageState();
 }
 
-class SocialFollowersPage extends StatelessWidget {
+class _SocialStoryViewerPageState extends ConsumerState<SocialStoryViewerPage> {
+  List<Map<String, dynamic>> _segments = const [];
+  bool _isMine = false;
+  bool _loading = true;
+  int _index = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final repo = ref.read(customerRepositoryProvider);
+    final auth = ref.read(customerAuthStateProvider).valueOrNull;
+    final myId = auth?.supabaseUid ?? auth?.id ?? '';
+    final data = await repo.socialStories();
+    final mine = ((data['mine'] as List?) ?? const [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final groups = (data['groups'] as List?) ?? const [];
+    List<Map<String, dynamic>> segs = const [];
+    var isMine = false;
+    if (widget.userId == myId || widget.userId == 'me') {
+      segs = mine;
+      isMine = true;
+    } else {
+      for (final raw in groups) {
+        final g = Map<String, dynamic>.from(raw as Map);
+        if (g.s('user_id') == widget.userId) {
+          segs = ((g['segments'] as List?) ?? const [])
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          break;
+        }
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _segments = segs;
+      _isMine = isMine;
+      _loading = false;
+    });
+    if (segs.isNotEmpty) _showSegment(0);
+  }
+
+  void _showSegment(int i) {
+    _timer?.cancel();
+    if (i < 0 || i >= _segments.length) {
+      if (mounted) context.pop();
+      return;
+    }
+    setState(() => _index = i);
+    final seg = _segments[i];
+    if (!_isMine) {
+      ref.read(customerRepositoryProvider).viewSocialStory(seg.s('id'));
+    }
+    // Images auto-advance after 5s; videos advance via their own player length
+    // (kept simple here with a longer fallback).
+    final isVideo = seg.s('media_type') == 'video';
+    _timer = Timer(Duration(seconds: isVideo ? 15 : 5), () => _showSegment(i + 1));
+  }
+
+  Future<void> _delete() async {
+    final seg = _segments[_index];
+    try {
+      await ref.read(customerRepositoryProvider).deleteSocialStory(seg.s('id'));
+      if (mounted) context.pop();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_segments.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(backgroundColor: Colors.black),
+        body: const Center(
+            child: Text('No stories', style: TextStyle(color: Colors.white))),
+      );
+    }
+    final seg = _segments[_index];
+    final isVideo = seg.s('media_type') == 'video';
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Center(
+                child: isVideo
+                    ? SocialVideo(url: seg.s('media_url'), height: 600)
+                    : RemoteImage(url: seg.s('media_url')),
+              ),
+            ),
+            // Tap zones: left = previous, right = next.
+            Positioned.fill(
+              child: Row(
+                children: [
+                  Expanded(
+                      child: GestureDetector(
+                          onTap: () => _showSegment(_index - 1),
+                          behavior: HitTestBehavior.translucent)),
+                  Expanded(
+                      child: GestureDetector(
+                          onTap: () => _showSegment(_index + 1),
+                          behavior: HitTestBehavior.translucent)),
+                ],
+              ),
+            ),
+            // Segmented progress bars.
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _segments.length; i++)
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: i <= _index
+                              ? Colors.white
+                              : Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 20,
+              right: 8,
+              child: Row(
+                children: [
+                  if (_isMine)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          color: Colors.white),
+                      onPressed: _delete,
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => context.pop(),
+                  ),
+                ],
+              ),
+            ),
+            if (_isMine && seg.i('view_count') > 0)
+              Positioned(
+                bottom: 16,
+                left: 16,
+                child: Row(
+                  children: [
+                    const Icon(Icons.remove_red_eye_outlined,
+                        color: Colors.white70, size: 18),
+                    const SizedBox(width: 4),
+                    Text('${seg.i('view_count')}',
+                        style: const TextStyle(color: Colors.white70)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SocialFollowersPage extends ConsumerWidget {
   const SocialFollowersPage(
       {required this.userId, this.following = false, super.key});
   final String userId;
   final bool following;
 
   @override
-  Widget build(BuildContext context) => _SocialPlaceholder(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(customerRepositoryProvider);
+    return CustomerScaffold(
       title: following ? 'Following' : 'Followers',
-      icon: Icons.people_rounded,
-      message: 'Social connections for $userId.');
+      showBack: true,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: following
+            ? repo.socialFollowing(userId)
+            : repo.socialFollowers(userId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final rows = snapshot.data ?? [];
+          if (rows.isEmpty) {
+            return EmptyState(
+                icon: Icons.people_rounded,
+                title: following ? 'Not following anyone' : 'No followers yet',
+                message: 'Connections will appear here.');
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              for (final r in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ProfileRow(profile: r),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
-class SocialEditProfilePage extends StatelessWidget {
+/// Saved posts grid (web Profile → Saved tab / SavedPanel).
+class SocialSavedPostsPage extends ConsumerWidget {
+  const SocialSavedPostsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    if (auth == null) return const LoginRequiredPage();
+    return CustomerScaffold(
+      title: 'Saved',
+      showBack: true,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: ref.read(customerRepositoryProvider).socialSavedPosts(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final rows = snapshot.data ?? [];
+          if (rows.isEmpty) {
+            return const EmptyState(
+                icon: Icons.bookmark_border_rounded,
+                title: 'No saved posts',
+                message: 'Posts you save will appear here.');
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              for (final p in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: SocialPostCard(post: p),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Stateful Follow/Following button used on the profile header.
+class _ProfileFollowButton extends ConsumerStatefulWidget {
+  const _ProfileFollowButton(
+      {required this.userId, required this.initialFollowing});
+  final String userId;
+  final bool initialFollowing;
+
+  @override
+  ConsumerState<_ProfileFollowButton> createState() =>
+      _ProfileFollowButtonState();
+}
+
+class _ProfileFollowButtonState extends ConsumerState<_ProfileFollowButton> {
+  late bool _following = widget.initialFollowing;
+  bool _busy = false;
+
+  Future<void> _toggle() async {
+    if (widget.userId.isEmpty || _busy) return;
+    final repo = ref.read(customerRepositoryProvider);
+    final was = _following;
+    setState(() {
+      _following = !was;
+      _busy = true;
+    });
+    try {
+      if (was) {
+        await repo.unfollowSocialUser(widget.userId);
+      } else {
+        await repo.followSocialUser(widget.userId);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _following = was);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _following
+        ? OutlinedButton(
+            onPressed: _busy ? null : _toggle,
+            child: const Text('Following'))
+        : FilledButton(
+            onPressed: _busy ? null : _toggle, child: const Text('Follow'));
+  }
+}
+
+class SocialEditProfilePage extends ConsumerStatefulWidget {
   const SocialEditProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _SocialSettingsForm(
-      title: 'Edit Social Profile',
-      fields: ['Display name', 'Username', 'Bio']);
+  ConsumerState<SocialEditProfilePage> createState() =>
+      _SocialEditProfilePageState();
+}
+
+class _SocialEditProfilePageState extends ConsumerState<SocialEditProfilePage> {
+  final _name = TextEditingController();
+  final _bio = TextEditingController();
+  XFile? _avatar;
+  String _existingAvatar = '';
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _bio.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final p = await ref.read(customerRepositoryProvider).socialProfile('me');
+    if (!mounted) return;
+    setState(() {
+      _name.text = p?.s('display_name', p.s('userName', p.s('name', ''))) ?? '';
+      _bio.text = p?.s('bio') ?? '';
+      _existingAvatar = p?.s('userAvatar', p.s('avatarUrl', p.s('avatar'))) ?? '';
+      _loading = false;
+    });
+  }
+
+  Future<void> _pickAvatar() async {
+    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (file != null) setState(() => _avatar = file);
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      String? avatarUrl;
+      if (_avatar != null) {
+        final uploaded = await repo.uploadSocialMediaFile(File(_avatar!.path));
+        avatarUrl = uploaded.s('url');
+      }
+      await repo.updateSocialProfile(
+        name: _name.text.trim(),
+        bio: _bio.text.trim(),
+        avatarUrl: avatarUrl,
+      );
+      messenger.showSnackBar(const SnackBar(content: Text('Profile updated')));
+      if (mounted) context.pop();
+    } catch (e) {
+      setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(content: Text('Could not update: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const CustomerScaffold(
+        title: 'Edit Profile',
+        showBack: true,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final preview =
+        _avatar != null ? null : (_existingAvatar.isNotEmpty ? _existingAvatar : '');
+    return CustomerScaffold(
+      title: 'Edit Profile',
+      showBack: true,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: GestureDetector(
+                    onTap: _busy ? null : _pickAvatar,
+                    child: CircleAvatar(
+                      radius: 44,
+                      backgroundColor: AppColors.accent,
+                      backgroundImage: _avatar != null
+                          ? FileImage(File(_avatar!.path))
+                          : (preview != null && preview.isNotEmpty
+                              ? NetworkImage(preview)
+                              : null) as ImageProvider?,
+                      child: (_avatar == null &&
+                              (preview == null || preview.isEmpty))
+                          ? const Icon(Icons.add_a_photo_rounded,
+                              color: AppColors.primary)
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                    controller: _name,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.person_rounded),
+                        labelText: 'Name')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: _bio,
+                    maxLength: 150,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.info_outline_rounded),
+                        labelText: 'Bio')),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _save,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.check_rounded),
+                  label: Text(_busy ? 'Saving…' : 'Save'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SocialCreatorDashboardPage extends StatelessWidget {
@@ -1008,11 +2395,75 @@ class SocialShopPage extends StatelessWidget {
       message: 'Tag products and shop from creator posts.');
 }
 
-class SocialSettingsPage extends StatelessWidget {
+class SocialSettingsPage extends ConsumerStatefulWidget {
   const SocialSettingsPage({super.key});
 
   @override
+  ConsumerState<SocialSettingsPage> createState() => _SocialSettingsPageState();
+}
+
+class _SocialSettingsPageState extends ConsumerState<SocialSettingsPage> {
+  static const _notifKeys = [
+    'likes',
+    'comments',
+    'follows',
+    'messages',
+    'reposts',
+    'mentions',
+    'liveVideos',
+    'emailNotifs',
+  ];
+
+  Map<String, dynamic> _settings = {};
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = await ref.read(customerRepositoryProvider).socialSettings();
+    if (!mounted) return;
+    setState(() {
+      _settings = Map<String, dynamic>.from(s);
+      _loading = false;
+    });
+  }
+
+  bool _boolOf(String key, [bool fallback = false]) =>
+      _settings[key] == null ? fallback : _settings[key] == true;
+
+  Map<String, dynamic> get _notifs =>
+      _settings['notifications'] is Map
+          ? Map<String, dynamic>.from(_settings['notifications'] as Map)
+          : <String, dynamic>{};
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(customerRepositoryProvider).updateSocialSettings(_settings);
+      messenger.showSnackBar(const SnackBar(content: Text('Settings saved')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const CustomerScaffold(
+        title: 'Social Settings',
+        showBack: true,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     return CustomerScaffold(
       title: 'Social Settings',
       showBack: true,
@@ -1021,21 +2472,116 @@ class SocialSettingsPage extends StatelessWidget {
         children: [
           _SettingsTile(
               'Edit Profile', Icons.person_rounded, '/app/social/edit-profile'),
-          _SettingsTile('Change Password', Icons.lock_rounded,
-              '/app/social/change-password'),
-          _SettingsTile('Notifications', Icons.notifications_rounded,
-              '/app/social/notification-settings'),
-          _SettingsTile(
-              'Privacy', Icons.privacy_tip_rounded, '/app/social/privacy'),
-          _SettingsTile(
-              'Security', Icons.security_rounded, '/app/social/security'),
-          _SettingsTile('Help Center', Icons.help_rounded, '/app/social/help'),
+          _SettingsTile('Saved', Icons.bookmark_rounded, '/app/social/saved'),
           _SettingsTile('Friends', Icons.people_rounded, '/app/social/friends'),
           _SettingsTile('Suggestions', Icons.person_add_alt_rounded,
               '/app/social/suggestions'),
+          const SizedBox(height: 8),
+          const SectionHeader(title: 'Privacy'),
+          AppCard(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Private account'),
+                  value: _boolOf('privateAccount'),
+                  onChanged: (v) =>
+                      setState(() => _settings['privateAccount'] = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show activity status'),
+                  value: _boolOf('showActivityStatus', true),
+                  onChanged: (v) =>
+                      setState(() => _settings['showActivityStatus'] = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Filter offensive comments'),
+                  value: _boolOf('filterOffensiveComments'),
+                  onChanged: (v) =>
+                      setState(() => _settings['filterOffensiveComments'] = v),
+                ),
+                _allowFromSelect('Who can message you', 'messageAllowFrom'),
+                _allowFromSelect('Who can comment', 'commentsAllowFrom'),
+              ],
+            ),
+          ),
+          const SectionHeader(title: 'Notifications'),
+          AppCard(
+            child: Column(
+              children: [
+                for (final k in _notifKeys)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_notifLabel(k)),
+                    value: _notifs[k] == true,
+                    onChanged: (v) {
+                      final n = _notifs;
+                      n[k] = v;
+                      setState(() => _settings['notifications'] = n);
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const SectionHeader(title: 'Time management'),
+          AppCard(
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Daily reminder'),
+              value: _boolOf('dailyReminder'),
+              onChanged: (v) => setState(() => _settings['dailyReminder'] = v),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : _save,
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.check_rounded),
+            label: Text(_busy ? 'Saving…' : 'Save settings'),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _allowFromSelect(String label, String key) {
+    final value = (_settings[key] ?? 'everyone').toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          DropdownButton<String>(
+            value: const ['everyone', 'followers', 'none'].contains(value)
+                ? value
+                : 'everyone',
+            items: const [
+              DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
+              DropdownMenuItem(value: 'followers', child: Text('Followers')),
+              DropdownMenuItem(value: 'none', child: Text('No one')),
+            ],
+            onChanged: (v) => setState(() => _settings[key] = v ?? 'everyone'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _notifLabel(String key) {
+    switch (key) {
+      case 'liveVideos':
+        return 'Live videos';
+      case 'emailNotifs':
+        return 'Email notifications';
+      default:
+        return key[0].toUpperCase() + key.substring(1);
+    }
   }
 }
 
@@ -1140,11 +2686,9 @@ class SocialUserPostsPage extends ConsumerWidget {
       title: 'User Posts',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).socialFeed(),
+        future: ref.read(customerRepositoryProvider).socialUserPosts(userId),
         builder: (context, snapshot) {
-          final rows = (snapshot.data ?? [])
-              .where((p) => p.s('user_id') == userId)
-              .toList();
+          final rows = snapshot.data ?? [];
           if (rows.isEmpty) {
             return const EmptyState(
                 icon: Icons.grid_on_rounded,
@@ -1167,12 +2711,12 @@ class SocialUserPostsPage extends ConsumerWidget {
 class _SocialQuickNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Web parity: no Live/Shop/Channels/Dashboard in Socio nav.
     final items = [
       ('Explore', Icons.search_rounded, '/app/social/explore'),
       ('Reels', Icons.movie_rounded, '/app/social/reels'),
-      ('Live', Icons.live_tv_rounded, '/app/social/live'),
-      ('Shop', Icons.shopping_bag_rounded, '/app/social/shop'),
       ('Friends', Icons.people_rounded, '/app/social/friends'),
+      ('Saved', Icons.bookmark_border_rounded, '/app/social/saved'),
     ];
     return SizedBox(
       height: 74,

@@ -246,7 +246,8 @@ class CustomerRepository {
       if (!seen.add(id)) continue;
       try {
         final rows = await _gateway.customerOrders(id);
-        return rows.map(_normalizeOrder).toList();
+        final normalized = rows.map(_normalizeOrder).toList();
+        return await Future.wait(normalized.map(_hydrateOrder));
       } catch (e) {
         lastError = e;
       }
@@ -271,7 +272,7 @@ class CustomerRepository {
 
   Future<Map<String, dynamic>?> order(String id) async {
     final data = await _gateway.order(id);
-    return _normalizeOrder(data);
+    return _hydrateOrder(_normalizeOrder(data));
   }
 
   Future<Map<String, dynamic>?> profile(String customerId) async {
@@ -770,25 +771,203 @@ class CustomerRepository {
 
   Future<List<Map<String, dynamic>>> socialComments(String postId) async {
     if (!await apiSession.hasToken()) return [];
-    return _gateway.comments(postId);
+    final rows = await _gateway.comments(postId);
+    return rows.map(_normalizeSocialComment).toList();
+  }
+
+  Map<String, dynamic> _normalizeSocialComment(Map<String, dynamic> row) {
+    final author = row['author'] is Map
+        ? Map<String, dynamic>.from(row['author'] as Map)
+        : row['user'] is Map
+            ? Map<String, dynamic>.from(row['user'] as Map)
+            : <String, dynamic>{};
+    return {
+      ...row,
+      'id': row.s('id', row.s('commentId')),
+      'user_id': row.s('user_id',
+          row.s('userId', row.s('authorId', author.s('id')))),
+      'username': row.s(
+          'username',
+          row.s('userName',
+              row.s('authorName', author.s('name', author.s('username', 'Planext user'))))),
+      'avatar': resolveMediaUrl(row.s('userAvatar',
+          row.s('avatarUrl', row.s('avatar', author.s('avatar', author.s('avatarUrl')))))),
+      'content': row.s(
+          'content', row.s('contentText', row.s('comment', row.s('body')))),
+      'created_at': row.s('created_at', row.s('createdAt')),
+    };
+  }
+
+  /// Sponsored feed ads (web getSocioAds → GET /social/feed/ads). Returns [] on
+  /// any failure so the feed still renders.
+  Future<List<Map<String, dynamic>>> socialFeedAds() async {
+    if (!await apiSession.hasToken()) return [];
+    try {
+      final rows = await _gateway.feedAds();
+      return rows
+          .map((row) => {
+                ...row,
+                'id': row.s('id'),
+                'title': row.s('title'),
+                'caption': row.s('caption'),
+                'advertiser': row.s('advertiser'),
+                'image': resolveMediaUrl(row.s('image', row.s('imageUrl'))),
+                'redirect_url': row.s('redirectUrl', row.s('redirect_url')),
+              })
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> createSocialPost(
       String userId, Map<String, dynamic> data) async {
+    final media = (data['media_urls'] ?? data['mediaUrls'] ?? const []) as List;
+    // Mirror the web create-post body exactly (lib/api/social.ts createPost).
     await _gateway.createPost(
       {
         'contentText': data['content_text'] ??
             data['contentText'] ??
             data['caption'] ??
             '',
-        'mediaUrls': data['media_urls'] ?? data['mediaUrls'] ?? [],
-        'postType': data['post_type'] ?? data['postType'] ?? 'text',
+        'mediaUrls': media,
+        'postType': data['post_type'] ??
+            data['postType'] ??
+            (media.isNotEmpty ? 'image' : 'text'),
         'visibility': data['visibility'] ?? 'public',
         'location': data['location'],
-        'tags': data['tags'] ?? [],
+        'tags': data['tags'] ?? const [],
         'category': data['category'] ?? 'general',
+        'linkedProducts': data['linkedProducts'] ??
+            data['linked_products'] ??
+            const [],
+        'hideLikeCount':
+            data['hideLikeCount'] ?? data['hide_like_count'] ?? false,
+        'commentPermission': data['commentPermission'] ??
+            data['comment_permission'] ??
+            'everyone',
       },
     );
+  }
+
+  // ── Stories ────────────────────────────────────────────────────────────
+  Map<String, dynamic> _normalizeStory(Map<String, dynamic> row) {
+    final mediaUrl = resolveMediaUrl(row.s('mediaUrl',
+        row.s('media_url', row.s('url', row.s('fileUrl')))));
+    return {
+      ...row,
+      'id': row.s('id', row.s('storyId')),
+      'user_id': row.s('user_id',
+          row.s('authorId', row.s('userId', row.s('author_id')))),
+      'username': row.s('username',
+          row.s('userName', row.s('authorName', 'Planext user'))),
+      'avatar': resolveMediaUrl(row.s('userAvatar',
+          row.s('avatarUrl', row.s('avatar', row.s('user_avatar'))))),
+      'media_url': mediaUrl,
+      'media_type': row.s('mediaType', row.s('media_type', 'image')),
+      'created_at': row.s('createdAt', row.s('created_at')),
+      'expires_at': row.s('expiresAt', row.s('expires_at')),
+      'viewed': row['viewed'] == true || row['isViewed'] == true,
+      'view_count': row.i('viewCount', row.i('view_count')),
+    };
+  }
+
+  bool _storyAlive(Map<String, dynamic> s) {
+    DateTime? expiry;
+    final exp = s.s('expires_at');
+    if (exp.isNotEmpty) expiry = DateTime.tryParse(exp);
+    if (expiry == null) {
+      final created = DateTime.tryParse(s.s('created_at'));
+      if (created != null) expiry = created.add(const Duration(hours: 24));
+    }
+    return expiry == null || expiry.isAfter(DateTime.now());
+  }
+
+  /// Returns `{ 'mine': [segments], 'groups': [ {user_id, username, avatar,
+  /// segments:[...]} ] }` — expired segments removed, unviewed groups first
+  /// (mirrors the web story rail built by buildStoryItems).
+  Future<Map<String, dynamic>> socialStories() async {
+    if (!await apiSession.hasToken()) {
+      return {'mine': <Map<String, dynamic>>[], 'groups': <Map<String, dynamic>>[]};
+    }
+    final fetched = await Future.wait([
+      _gateway.myStories().catchError((_) => <Map<String, dynamic>>[]),
+      _gateway.storyFeed().catchError((_) => <Map<String, dynamic>>[]),
+    ]);
+    final mine =
+        fetched[0].map(_normalizeStory).where(_storyAlive).toList();
+    final others =
+        fetched[1].map(_normalizeStory).where(_storyAlive).toList();
+
+    final grouped = <String, Map<String, dynamic>>{};
+    for (final s in others) {
+      final uid = s.s('user_id');
+      if (uid.isEmpty) continue;
+      final g = grouped.putIfAbsent(
+          uid,
+          () => {
+                'user_id': uid,
+                'username': s.s('username', 'Planext user'),
+                'avatar': s.s('avatar'),
+                'segments': <Map<String, dynamic>>[],
+              });
+      (g['segments'] as List).add(s);
+    }
+    final groups = grouped.values.toList();
+    // Unviewed groups first.
+    groups.sort((a, b) {
+      bool allViewed(Map<String, dynamic> g) =>
+          (g['segments'] as List).every((e) => (e as Map)['viewed'] == true);
+      final av = allViewed(a), bv = allViewed(b);
+      return av == bv ? 0 : (av ? 1 : -1);
+    });
+    return {'mine': mine, 'groups': groups};
+  }
+
+  Future<void> createSocialStory({
+    required String mediaUrl,
+    required String mediaType,
+    String? textOverlay,
+  }) async {
+    await _gateway.createStory({
+      'mediaUrl': mediaUrl,
+      'mediaType': mediaType,
+      if (textOverlay != null && textOverlay.trim().isNotEmpty)
+        'textOverlay': textOverlay.trim(),
+    });
+  }
+
+  Future<void> viewSocialStory(String storyId) async {
+    try {
+      await _gateway.viewStory(storyId);
+    } catch (_) {}
+  }
+
+  Future<void> deleteSocialStory(String storyId) =>
+      _gateway.deleteStory(storyId);
+
+  /// Uploads a social media file and returns `{ 'url', 'type' }` (type is the
+  /// backend-detected 'image' | 'video'), matching web's uploadMedia response.
+  Future<Map<String, dynamic>> uploadSocialMediaFile(File file) async {
+    final data = await _gateway.uploadSocialMedia(file);
+    return {
+      'url': data.s('url', data.s('fileUrl', data.s('path'))),
+      'type': data.s('mediaType', data.s('media_type', 'image')),
+    };
+  }
+
+  /// Product search for the create-post "link products" field (web uses
+  /// catalogApi.search, limit 8). Returns normalized products.
+  Future<List<Map<String, dynamic>>> socialProductSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+    final raw = await _gateway.searchCatalog(query: q, type: 'product', limit: 8);
+    return raw
+        .where((row) =>
+            row.s('type', 'product').toLowerCase() == 'product' ||
+            row['type'] == null)
+        .map(_normalizeProduct)
+        .toList();
   }
 
   Future<List<Map<String, dynamic>>> socialProfiles({String? search}) async {
@@ -802,6 +981,57 @@ class CustomerRepository {
     return userId == 'me'
         ? _gateway.mySocialProfile()
         : _gateway.userSocialProfile(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> socialUserPosts(String userId) async {
+    if (!await apiSession.hasToken()) return [];
+    final rows = await _gateway.userPosts(userId);
+    return rows.map(_normalizeSocialPost).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> socialSavedPosts() async {
+    if (!await apiSession.hasToken()) return [];
+    final rows = await _gateway.savedPosts();
+    return rows.map(_normalizeSocialPost).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> socialFollowers(String userId) async {
+    if (!await apiSession.hasToken()) return [];
+    return _gateway.followers(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> socialFollowing(String userId) async {
+    if (!await apiSession.hasToken()) return [];
+    return _gateway.following(userId);
+  }
+
+  Future<Map<String, dynamic>> socialSettings() async {
+    if (!await apiSession.hasToken()) return {};
+    try {
+      return await _gateway.mySocialSettings();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> updateSocialSettings(Map<String, dynamic> patch) async {
+    if (!await apiSession.hasToken()) return;
+    await _gateway.updateMySocialSettings(patch);
+  }
+
+  /// Updates the socio profile (name/bio/avatar) — web edit-profile uploads the
+  /// avatar via /social/upload then patches the shared profile.
+  Future<void> updateSocialProfile({
+    String? name,
+    String? bio,
+    String? avatarUrl,
+  }) async {
+    final id = await apiSession.customerId() ?? '';
+    await updateProfile(id, {
+      if (name != null) 'name': name,
+      if (bio != null) 'bio': bio,
+      if (avatarUrl != null) 'avatar': avatarUrl,
+    });
   }
 
   Future<List<Map<String, dynamic>>> socialNotifications(String userId) async {
@@ -1429,11 +1659,54 @@ class CustomerRepository {
         : row['user'] is Map
             ? Map<String, dynamic>.from(row['user'] as Map)
             : <String, dynamic>{};
+    final meta = row['metadata'] is Map
+        ? Map<String, dynamic>.from(row['metadata'] as Map)
+        : <String, dynamic>{};
     final media = _mediaList(row).map(resolveMediaUrl).where((u) => u.isNotEmpty).toList();
     final postType =
         row.s('post_type', row.s('postType', row.s('media_type', row.s('mediaType'))));
+    // Linked products (metadata.linkedProducts on the server) → {id,name,image,price,vendorId}.
+    final rawLinked = (row['linkedProducts'] ??
+        row['linked_products'] ??
+        meta['linkedProducts'] ??
+        meta['linked_products']);
+    final linkedProducts = rawLinked is List
+        ? rawLinked.whereType<Map>().map((e) {
+            final p = Map<String, dynamic>.from(e);
+            return {
+              'id': p.s('id', p.s('productId')),
+              'name': p.s('name', p.s('title')),
+              'image': resolveMediaUrl(p.s('image', p.s('imageUrl'))),
+              'price': p.n('price'),
+              'vendorId': p.s('vendorId', p.s('vendor_id')),
+            };
+          }).toList()
+        : const <Map<String, dynamic>>[];
+    final rawTags = (row['tags'] ?? meta['tags']);
+    final tags = rawTags is List
+        ? rawTags.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : const <String>[];
     return {
       ...row,
+      'avatar': resolveMediaUrl(row.s(
+          'userAvatar',
+          row.s('avatarUrl',
+              row.s('avatar', row.s('authorAvatar', author.s('avatar',
+                  author.s('avatarUrl', author.s('userAvatar')))))))),
+      'is_following': row['isFollowing'] == true ||
+          row['isFollowingAuthor'] == true ||
+          row['following'] == true,
+      'is_self': row['isSelf'] == true || row['self'] == true,
+      'category': row.s('category', meta.s('category')),
+      'tags': tags,
+      'linked_products': linkedProducts,
+      'hide_like_count': row['hideLikeCount'] == true ||
+          meta['hideLikeCount'] == true ||
+          row['hide_like_count'] == true,
+      'comment_permission': row.s('commentPermission',
+          row.s('comment_permission', meta.s('commentPermission', 'everyone'))),
+      'shares_count': row.i('shares_count',
+          row.i('share_count', row.i('sharesCount', row.i('shareCount')))),
       'id': row.s('id', row.s('postId')),
       'user_id': row.s(
           'user_id',
@@ -1538,6 +1811,76 @@ class CustomerRepository {
       'subtotal':
           row.n('subtotal', row.n('itemSubtotal', meta.n('itemSubtotal'))),
     };
+  }
+
+  /// Orders persist only productId/qty/price — the product name, image and price,
+  /// plus the vendor's business name, are resolved from the catalog at read time
+  /// (same approach as [wishlistProducts]). Legacy lines saved with price 0 fall
+  /// back to the current catalog price so nothing renders as "Item"/₹0.
+  Future<Map<String, dynamic>> _hydrateOrder(Map<String, dynamic> order) async {
+    final items = order['items'];
+    if (items is! List || items.isEmpty) return order;
+
+    final productIds = <String>{};
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final item = Map<String, dynamic>.from(raw);
+      final pid = item.s('productId', item.s('product_id', item.s('id')));
+      if (pid.isNotEmpty) productIds.add(pid);
+    }
+
+    final productMap = <String, Map<String, dynamic>>{};
+    await Future.wait(productIds.map((pid) async {
+      try {
+        final hydrated = await product(pid).timeout(const Duration(seconds: 8));
+        if (hydrated != null) productMap[pid] = hydrated;
+      } catch (_) {}
+    }));
+
+    String vendorIdForName = '';
+    final hydratedItems = <Map<String, dynamic>>[];
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final item = Map<String, dynamic>.from(raw);
+      final pid = item.s('productId', item.s('product_id', item.s('id')));
+      final p = productMap[pid];
+      final currentTitle = item.s('title');
+      final title = (currentTitle.isEmpty || currentTitle == 'Item') && p != null
+          ? p.s('title', 'Item')
+          : (currentTitle.isEmpty ? 'Item' : currentTitle);
+      final currentImage = item.s('image');
+      final image = currentImage.isNotEmpty ? currentImage : (p?.s('image') ?? '');
+      final currentPrice = item.n('price');
+      final price = currentPrice > 0 ? currentPrice : (p?.n('price') ?? 0);
+      if (vendorIdForName.isEmpty) vendorIdForName = p?.s('vendor_id') ?? '';
+      hydratedItems.add({
+        ...item,
+        'title': title,
+        'image': image,
+        'price': price,
+      });
+    }
+    order['items'] = hydratedItems;
+
+    // Resolve the vendor business name from the catalog when the order carries
+    // only a vendor id/code. Prefer the catalog vendor id from a hydrated product
+    // (guaranteed to match) over the order's stored vendor id.
+    if (order.s('vendor_name').isEmpty) {
+      final orderVendorId = order.s('vendor_id');
+      final tryId =
+          (vendorIdForName.isNotEmpty ? vendorIdForName : orderVendorId).trim();
+      if (tryId.isNotEmpty) {
+        try {
+          final v = await vendor(tryId).timeout(const Duration(seconds: 8));
+          if (v != null) {
+            final name = v.s('vendor_name',
+                v.s('name', v.s('businessName', v.s('business_name'))));
+            if (name.isNotEmpty) order['vendor_name'] = name;
+          }
+        } catch (_) {}
+      }
+    }
+    return order;
   }
 
   Map<String, dynamic> _normalizeVendor(Map<String, dynamic> row) {
