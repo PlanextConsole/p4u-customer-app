@@ -187,6 +187,32 @@ class ApiClient {
     String? contentType,
     bool auth = true,
   }) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await _uploadFileOnce(
+          path,
+          file,
+          field: field,
+          fields: fields,
+          contentType: contentType,
+          auth: auth,
+        );
+      } on ApiException catch (e) {
+        if (!auth || e.statusCode != 401 || attempt > 0) rethrow;
+        await _refreshAuthDeduped();
+      }
+    }
+    throw const ApiException('Upload failed');
+  }
+
+  Future<Map<String, dynamic>> _uploadFileOnce(
+    String path,
+    File file, {
+    required String field,
+    required Map<String, Object?> fields,
+    String? contentType,
+    required bool auth,
+  }) async {
     final request = await _http.postUrl(_uri(path));
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     if (auth) await _attachAuth(request);
@@ -208,7 +234,7 @@ class ApiClient {
     request.write(
         'Content-Disposition: form-data; name="$field"; filename="$fileName"\r\n');
     request.write(
-        'Content-Type: ${contentType ?? 'application/octet-stream'}\r\n\r\n');
+        'Content-Type: ${contentType ?? _mediaContentType(fileName)}\r\n\r\n');
     request.add(await file.readAsBytes());
     request.write('\r\n--$boundary--\r\n');
 
@@ -222,6 +248,32 @@ class ApiClient {
     Map<String, Object?> fields = const {},
     String? contentType,
     bool auth = true,
+  }) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await _uploadFilesOnce(
+          path,
+          files,
+          field: field,
+          fields: fields,
+          contentType: contentType,
+          auth: auth,
+        );
+      } on ApiException catch (e) {
+        if (!auth || e.statusCode != 401 || attempt > 0) rethrow;
+        await _refreshAuthDeduped();
+      }
+    }
+    throw const ApiException('Upload failed');
+  }
+
+  Future<Map<String, dynamic>> _uploadFilesOnce(
+    String path,
+    List<File> files, {
+    required String field,
+    required Map<String, Object?> fields,
+    String? contentType,
+    required bool auth,
   }) async {
     final request = await _http.postUrl(_uri(path));
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -245,13 +297,33 @@ class ApiClient {
       request.write(
           'Content-Disposition: form-data; name="$field"; filename="$fileName"\r\n');
       request.write(
-          'Content-Type: ${contentType ?? 'application/octet-stream'}\r\n\r\n');
+          'Content-Type: ${contentType ?? _mediaContentType(fileName)}\r\n\r\n');
       request.add(await file.readAsBytes());
       request.write('\r\n');
     }
     request.write('--$boundary--\r\n');
 
     return _decodeResponse(await request.close());
+  }
+
+  String _mediaContentType(String fileName) {
+    final name = fileName.toLowerCase();
+    if (name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.jfif')) {
+      return 'image/jpeg';
+    }
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.gif')) return 'image/gif';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (name.endsWith('.heic')) return 'image/heic';
+    if (name.endsWith('.avif')) return 'image/avif';
+    if (name.endsWith('.mp4')) return 'video/mp4';
+    if (name.endsWith('.mov')) return 'video/quicktime';
+    if (name.endsWith('.webm')) return 'video/webm';
+    if (name.endsWith('.m4v')) return 'video/x-m4v';
+    if (name.endsWith('.avi')) return 'video/x-msvideo';
+    return 'application/octet-stream';
   }
 
   Future<T> _runQueued<T>(Future<T> Function() action) {

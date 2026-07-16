@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/presentation/auth_pages.dart';
 import 'features/customer/presentation/pages/account_pages.dart';
+import 'features/customer/presentation/pages/catalog_flow_pages.dart';
 import 'features/customer/presentation/pages/commerce_pages.dart';
 import 'features/customer/presentation/pages/property_pages.dart';
 import 'features/customer/presentation/pages/service_classified_pages.dart';
@@ -94,7 +95,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, state) =>
               CustomerCMSPage(slug: state.pathParameters['slug']!)),
       GoRoute(
-          path: '/app/browse', builder: (_, __) => const CustomerBrowsePage()),
+        path: '/app/browse',
+        builder: (_, state) => CustomerShopCatalogPage(
+          initialCategoryId: state.uri.queryParameters['category'],
+          initialSearch: state.uri.queryParameters['search'],
+        ),
+      ),
       GoRoute(
           path: '/app/product/:id',
           builder: (_, state) =>
@@ -131,7 +137,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, __) => const CustomerReferralPage()),
       GoRoute(
           path: '/app/services',
-          builder: (_, __) => const CustomerServicesPage()),
+          builder: (_, state) => CustomerServiceCatalogPage(
+                initialCategoryId: state.uri.queryParameters['category'],
+                initialSearch: state.uri.queryParameters['search'],
+              )),
       GoRoute(
           path: '/app/service/:id',
           builder: (_, state) =>

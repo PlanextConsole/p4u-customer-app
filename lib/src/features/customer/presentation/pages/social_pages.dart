@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/map_ext.dart';
@@ -133,8 +134,8 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
     final postId = post.s('id');
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     final myId = auth?.supabaseUid ?? auth?.id ?? '';
-    final isSelf =
-        post['is_self'] == true || (myId.isNotEmpty && post.s('user_id') == myId);
+    final isSelf = post['is_self'] == true ||
+        (myId.isNotEmpty && post.s('user_id') == myId);
     final avatar = post.s('avatar');
     final category = post.s('category');
     final tags = (post['tags'] is List)
@@ -234,8 +235,8 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
                           GestureDetector(
                             onTap: p.s('id').isEmpty
                                 ? null
-                                : () => context
-                                    .push('/app/product/${p.s('id')}'),
+                                : () =>
+                                    context.push('/app/product/${p.s('id')}'),
                             child: Container(
                               width: 80,
                               margin: const EdgeInsets.only(right: 8),
@@ -369,8 +370,8 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
     try {
       await ref.read(customerRepositoryProvider).shareSocialPost(postId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Post shared')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Post shared')));
       }
     } catch (e) {
       if (mounted) {
@@ -418,15 +419,17 @@ class SponsoredAdCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text('Sponsored',
-                      style:
-                          TextStyle(fontSize: 10, color: AppColors.primary)),
+                      style: TextStyle(fontSize: 10, color: AppColors.primary)),
                 ),
               ],
             ),
           ),
           if (image.isNotEmpty)
             RemoteImage(
-                url: image, height: 200, width: double.infinity, borderRadius: 0),
+                url: image,
+                height: 200,
+                width: double.infinity,
+                borderRadius: 0),
           if (ad.s('caption').isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(12),
@@ -479,16 +482,47 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
   }
 
   Future<void> _pickMedia() async {
-    final file = await ImagePicker().pickMedia();
-    if (file == null) return;
-    final lower = file.path.toLowerCase();
-    setState(() {
-      _picked = file;
-      _isVideo = lower.endsWith('.mp4') ||
-          lower.endsWith('.mov') ||
-          lower.endsWith('.webm') ||
-          lower.endsWith('.m4v');
-    });
+    final pickVideo = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose photo'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library_rounded),
+              title: const Text('Choose video'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (pickVideo == null) return;
+    try {
+      final picker = ImagePicker();
+      final file = pickVideo
+          ? await picker.pickVideo(source: ImageSource.gallery)
+          : await picker.pickImage(source: ImageSource.gallery);
+      if (file == null) return;
+      final bytes = await file.length();
+      if (bytes <= 0) throw Exception('The selected file is empty.');
+      if (bytes > 50 * 1024 * 1024) {
+        throw Exception('Post media must be smaller than 50 MB.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _picked = file;
+        _isVideo = pickVideo;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not select media: $e');
+    }
   }
 
   Future<void> _runProductSearch(String q) async {
@@ -540,9 +574,14 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
       _busy = true;
       _error = null;
     });
+    String uploadedMediaId = '';
     try {
       final repo = ref.read(customerRepositoryProvider);
-      final uploaded = await repo.uploadSocialMediaFile(File(_picked!.path));
+      final uploaded = await repo.uploadSocialMediaFile(
+        File(_picked!.path),
+        contentType: _picked!.mimeType,
+      );
+      uploadedMediaId = uploaded.s('id');
       final url = uploaded.s('url');
       if (url.isEmpty) throw Exception('Upload failed');
       final tags = _tags.text
@@ -555,7 +594,8 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
         'mediaUrls': [url],
         'postType': uploaded.s('type', _isVideo ? 'video' : 'image'),
         'visibility': _audience,
-        'location': _location.text.trim().isEmpty ? null : _location.text.trim(),
+        'location':
+            _location.text.trim().isEmpty ? null : _location.text.trim(),
         'tags': tags,
         'category': _category,
         'linkedProducts': _linkedProducts,
@@ -564,6 +604,17 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
       });
       if (mounted) context.go('/app/social');
     } catch (e) {
+      final statusCode = e is ApiException ? e.statusCode : null;
+      if (uploadedMediaId.isNotEmpty &&
+          statusCode != null &&
+          statusCode >= 400 &&
+          statusCode < 500) {
+        try {
+          await ref
+              .read(customerRepositoryProvider)
+              .deleteUploadedSocialMedia(uploadedMediaId);
+        } catch (_) {}
+      }
       if (mounted) {
         setState(() {
           _busy = false;
@@ -616,8 +667,7 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
                             : ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: Image.file(File(_picked!.path),
-                                    fit: BoxFit.cover,
-                                    width: double.infinity),
+                                    fit: BoxFit.cover, width: double.infinity),
                               ),
                   ),
                 ),
@@ -745,7 +795,8 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
                       prefixIcon: Icon(Icons.mode_comment_outlined),
                       labelText: 'Who can comment'),
                   items: const [
-                    DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
+                    DropdownMenuItem(
+                        value: 'everyone', child: Text('Everyone')),
                     DropdownMenuItem(
                         value: 'followers', child: Text('Followers Only')),
                     DropdownMenuItem(value: 'none', child: Text('No One')),
@@ -835,10 +886,8 @@ class _SocialExplorePageState extends ConsumerState<SocialExplorePage> {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
                               onTap: () {
-                                final id = u.s(
-                                    'user_id',
-                                    u.s('userId',
-                                        u.s('id', u.s('authorId'))));
+                                final id = u.s('user_id',
+                                    u.s('userId', u.s('id', u.s('authorId'))));
                                 if (id.isEmpty) return;
                                 context.go('/app/social/profile/$id');
                               },
@@ -891,7 +940,8 @@ class SocialProfilePage extends ConsumerWidget {
                         backgroundColor: AppColors.accent,
                         child: Text(
                             profile
-                                .s('display_name',
+                                .s(
+                                    'display_name',
                                     profile.s('userName',
                                         profile.s('name', auth.name)))
                                 .characters
@@ -903,8 +953,10 @@ class SocialProfilePage extends ConsumerWidget {
                                 fontWeight: FontWeight.w900))),
                     const SizedBox(height: 10),
                     Text(
-                        profile.s('display_name',
-                            profile.s('userName', profile.s('name', auth.name))),
+                        profile.s(
+                            'display_name',
+                            profile.s(
+                                'userName', profile.s('name', auth.name))),
                         style: const TextStyle(
                             fontWeight: FontWeight.w900, fontSize: 20)),
                     Text(
@@ -919,8 +971,8 @@ class SocialProfilePage extends ConsumerWidget {
                               profile.i('posts_count',
                                   profile.i('postCount', profile.i('posts')))),
                           GestureDetector(
-                            onTap: () => context.push(
-                                '/app/social/profile/$target/followers'),
+                            onTap: () => context
+                                .push('/app/social/profile/$target/followers'),
                             child: _Count(
                                 'Followers',
                                 profile.i(
@@ -929,8 +981,8 @@ class SocialProfilePage extends ConsumerWidget {
                                         profile.i('followers')))),
                           ),
                           GestureDetector(
-                            onTap: () => context.push(
-                                '/app/social/profile/$target/following'),
+                            onTap: () => context
+                                .push('/app/social/profile/$target/following'),
                             child: _Count(
                                 'Following',
                                 profile.i(
@@ -965,8 +1017,9 @@ class SocialProfilePage extends ConsumerWidget {
               ),
               const SectionHeader(title: 'Posts'),
               FutureBuilder<List<Map<String, dynamic>>>(
-                future:
-                    ref.read(customerRepositoryProvider).socialUserPosts(target),
+                future: ref
+                    .read(customerRepositoryProvider)
+                    .socialUserPosts(target),
                 builder: (context, posts) {
                   final rows = posts.data ?? [];
                   if (rows.isEmpty) {
@@ -1042,7 +1095,8 @@ class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
   @override
   void initState() {
     super.initState();
-    _future = ref.read(customerRepositoryProvider).socialComments(widget.postId);
+    _future =
+        ref.read(customerRepositoryProvider).socialComments(widget.postId);
   }
 
   @override
@@ -1279,8 +1333,7 @@ class _SocioDMChatPageState extends ConsumerState<SocioDMChatPage> {
                         .map((m) => Align(
                             alignment: Alignment.centerLeft,
                             child: AppCard(
-                                child: Text(m.s(
-                                    'content',
+                                child: Text(m.s('content',
                                     m.s('message', m.s('contentText')))))))
                         .toList());
               },
@@ -1331,9 +1384,8 @@ class _SocioDMChatPageState extends ConsumerState<SocioDMChatPage> {
       }
       _controller.clear();
       setState(() {
-        _messages = ref
-            .read(customerRepositoryProvider)
-            .socialMessages(conversationId);
+        _messages =
+            ref.read(customerRepositoryProvider).socialMessages(conversationId);
       });
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -1387,8 +1439,8 @@ class SocialNotificationsPage extends ConsumerWidget {
                                       ? Icons.campaign_rounded
                                       : Icons.notifications_rounded,
                                   color: AppColors.primary),
-                              title: Text(n.s(
-                                  'message', n.s('title', n.s('type')))),
+                              title: Text(
+                                  n.s('message', n.s('title', n.s('type')))),
                               subtitle: Text(
                                   '${n.s('source', 'social')} · ${shortDate(n['created_at'] ?? n['createdAt'])}')))))
                   .toList());
@@ -1461,7 +1513,9 @@ class SocialReelsPage extends ConsumerWidget {
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 15)),
-                        if (post.s('caption', post.s('content')).isNotEmpty) ...[
+                        if (post
+                            .s('caption', post.s('content'))
+                            .isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(post.s('caption', post.s('content')),
                               maxLines: 2,
@@ -1529,8 +1583,7 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
     }
   }
 
-  Widget _btn(IconData icon, String label, VoidCallback onTap,
-      {Color? color}) {
+  Widget _btn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -1554,19 +1607,20 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
         _btn(_liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             '$_likes', _like,
             color: _liked ? Colors.red : Colors.white),
-        _btn(Icons.mode_comment_outlined,
+        _btn(
+            Icons.mode_comment_outlined,
             '${widget.post.i('comments_count', widget.post.i('comment_count'))}',
             () => context.push('/app/social/comments/$id')),
         _btn(Icons.share_outlined, '', () async {
           final messenger = ScaffoldMessenger.of(context);
           try {
             await ref.read(customerRepositoryProvider).shareSocialPost(id);
-            messenger.showSnackBar(
-                const SnackBar(content: Text('Post shared')));
+            messenger
+                .showSnackBar(const SnackBar(content: Text('Post shared')));
           } catch (_) {}
         }),
-        _btn(_saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded, '',
-            _save),
+        _btn(_saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+            '', _save),
       ],
     );
   }
@@ -1616,7 +1670,8 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
               _StoryAvatar(
                 label: 'Your Story',
                 imageUrl: hasMine
-                    ? Map<String, dynamic>.from(mine.first as Map).s('media_url')
+                    ? Map<String, dynamic>.from(mine.first as Map)
+                        .s('media_url')
                     : '',
                 unviewed: false,
                 showAdd: true,
@@ -1637,8 +1692,8 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
                 Builder(builder: (context) {
                   final g = Map<String, dynamic>.from(raw as Map);
                   final segs = (g['segments'] as List?) ?? const [];
-                  final unviewed = segs
-                      .any((e) => (e as Map)['viewed'] != true);
+                  final unviewed =
+                      segs.any((e) => (e as Map)['viewed'] != true);
                   final cover = segs.isNotEmpty
                       ? Map<String, dynamic>.from(segs.first as Map)
                           .s('media_url')
@@ -1648,7 +1703,8 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
                     imageUrl: cover,
                     unviewed: unviewed,
                     onTap: () async {
-                      await context.push('/app/social/stories/${g.s('user_id')}');
+                      await context
+                          .push('/app/social/stories/${g.s('user_id')}');
                       _reload();
                     },
                   );
@@ -1765,16 +1821,31 @@ class _SocialAddStoryPageState extends ConsumerState<SocialAddStoryPage> {
   }
 
   Future<void> _pick() async {
-    final file = await ImagePicker().pickMedia();
-    if (file == null) return;
-    final lower = file.path.toLowerCase();
-    setState(() {
-      _picked = file;
-      _isVideo = lower.endsWith('.mp4') ||
-          lower.endsWith('.mov') ||
-          lower.endsWith('.webm') ||
-          lower.endsWith('.m4v');
-    });
+    try {
+      final file = await ImagePicker().pickMedia();
+      if (file == null) return;
+      final bytes = await file.length();
+      if (bytes <= 0) throw Exception('The selected file is empty.');
+      if (bytes > 50 * 1024 * 1024) {
+        throw Exception('Stories must be smaller than 50 MB.');
+      }
+      final lower = file.path.toLowerCase();
+      final mime = (file.mimeType ?? '').toLowerCase();
+      if (!mounted) return;
+      setState(() {
+        _picked = file;
+        _isVideo = mime.startsWith('video/') ||
+            lower.endsWith('.mp4') ||
+            lower.endsWith('.mov') ||
+            lower.endsWith('.webm') ||
+            lower.endsWith('.m4v') ||
+            lower.endsWith('.avi');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not select media: $e')));
+    }
   }
 
   Future<void> _share() async {
@@ -1782,7 +1853,10 @@ class _SocialAddStoryPageState extends ConsumerState<SocialAddStoryPage> {
     setState(() => _busy = true);
     try {
       final repo = ref.read(customerRepositoryProvider);
-      final uploaded = await repo.uploadSocialMediaFile(File(_picked!.path));
+      final uploaded = await repo.uploadSocialMediaFile(
+        File(_picked!.path),
+        contentType: _picked!.mimeType,
+      );
       final url = uploaded.s('url');
       if (url.isEmpty) throw Exception('Upload failed');
       await repo.createSocialStory(
@@ -1791,15 +1865,15 @@ class _SocialAddStoryPageState extends ConsumerState<SocialAddStoryPage> {
         textOverlay: _caption.text,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Story added')));
-        context.pop();
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Story added')));
+        context.pop(true);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not add story: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not add story: $e')));
       }
     }
   }
@@ -1870,8 +1944,7 @@ class _SocialAddStoryPageState extends ConsumerState<SocialAddStoryPage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.send_rounded),
                   label: Text(_busy ? 'Sharing…' : 'Share to Story'),
                 ),
@@ -1962,7 +2035,8 @@ class _SocialStoryViewerPageState extends ConsumerState<SocialStoryViewerPage> {
     // Images auto-advance after 5s; videos advance via their own player length
     // (kept simple here with a longer fallback).
     final isVideo = seg.s('media_type') == 'video';
-    _timer = Timer(Duration(seconds: isVideo ? 15 : 5), () => _showSegment(i + 1));
+    _timer =
+        Timer(Duration(seconds: isVideo ? 15 : 5), () => _showSegment(i + 1));
   }
 
   Future<void> _delete() async {
@@ -2031,9 +2105,7 @@ class _SocialStoryViewerPageState extends ConsumerState<SocialStoryViewerPage> {
                         margin: const EdgeInsets.symmetric(horizontal: 2),
                         height: 3,
                         decoration: BoxDecoration(
-                          color: i <= _index
-                              ? Colors.white
-                              : Colors.white24,
+                          color: i <= _index ? Colors.white : Colors.white24,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -2204,8 +2276,7 @@ class _ProfileFollowButtonState extends ConsumerState<_ProfileFollowButton> {
   Widget build(BuildContext context) {
     return _following
         ? OutlinedButton(
-            onPressed: _busy ? null : _toggle,
-            child: const Text('Following'))
+            onPressed: _busy ? null : _toggle, child: const Text('Following'))
         : FilledButton(
             onPressed: _busy ? null : _toggle, child: const Text('Follow'));
   }
@@ -2246,7 +2317,8 @@ class _SocialEditProfilePageState extends ConsumerState<SocialEditProfilePage> {
     setState(() {
       _name.text = p?.s('display_name', p.s('userName', p.s('name', ''))) ?? '';
       _bio.text = p?.s('bio') ?? '';
-      _existingAvatar = p?.s('userAvatar', p.s('avatarUrl', p.s('avatar'))) ?? '';
+      _existingAvatar =
+          p?.s('userAvatar', p.s('avatarUrl', p.s('avatar'))) ?? '';
       _loading = false;
     });
   }
@@ -2289,8 +2361,9 @@ class _SocialEditProfilePageState extends ConsumerState<SocialEditProfilePage> {
         child: Center(child: CircularProgressIndicator()),
       );
     }
-    final preview =
-        _avatar != null ? null : (_existingAvatar.isNotEmpty ? _existingAvatar : '');
+    final preview = _avatar != null
+        ? null
+        : (_existingAvatar.isNotEmpty ? _existingAvatar : '');
     return CustomerScaffold(
       title: 'Edit Profile',
       showBack: true,
@@ -2436,17 +2509,18 @@ class _SocialSettingsPageState extends ConsumerState<SocialSettingsPage> {
   bool _boolOf(String key, [bool fallback = false]) =>
       _settings[key] == null ? fallback : _settings[key] == true;
 
-  Map<String, dynamic> get _notifs =>
-      _settings['notifications'] is Map
-          ? Map<String, dynamic>.from(_settings['notifications'] as Map)
-          : <String, dynamic>{};
+  Map<String, dynamic> get _notifs => _settings['notifications'] is Map
+      ? Map<String, dynamic>.from(_settings['notifications'] as Map)
+      : <String, dynamic>{};
 
   Future<void> _save() async {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await ref.read(customerRepositoryProvider).updateSocialSettings(_settings);
+      await ref
+          .read(customerRepositoryProvider)
+          .updateSocialSettings(_settings);
       messenger.showSnackBar(const SnackBar(content: Text('Settings saved')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
@@ -2783,9 +2857,7 @@ class _ProfileRow extends ConsumerWidget {
                   }
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(following
-                            ? 'Unfollowed'
-                            : 'Following')));
+                        content: Text(following ? 'Unfollowed' : 'Following')));
                   }
                 },
           child: Text(following ? 'Following' : 'Follow'),

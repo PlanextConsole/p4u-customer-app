@@ -16,6 +16,7 @@ class CustomerRepository {
   final CustomerApi _gateway;
   static const _cartKey = 'p4u_customer_cart';
   static const _wishlistKey = 'p4u_customer_wishlist';
+  static const _serviceWishlistKey = 'p4u_customer_service_wishlist';
   static const _locationKey = 'p4u_customer_location';
   static const _latitudeKey = 'p4u_customer_latitude';
   static const _longitudeKey = 'p4u_customer_longitude';
@@ -44,7 +45,10 @@ class CustomerRepository {
   }
 
   Future<List<Map<String, dynamic>>> browseProducts(
-      {String? category, String? search, String? sort}) async {
+      {String? category,
+      String? subcategory,
+      String? search,
+      String? sort}) async {
     final q = search?.trim() ?? '';
     List<Map<String, dynamic>> rows;
     if (q.isNotEmpty) {
@@ -57,18 +61,22 @@ class CustomerRepository {
               row['type'] == null)
           .toList();
     } else {
-      rows = await _gateway.browseProducts(categoryId: category, limit: 50);
+      rows = await _gateway.browseProducts(
+          categoryId: category, subcategoryId: subcategory, limit: 120);
     }
     var products = rows.map(_normalizeProduct).toList();
-    if (q.isNotEmpty && category != null && category.isNotEmpty) {
-      products = products
-          .where((p) =>
-              p.s('category_id', p.s('categoryId')) == category ||
-              p
-                  .s('category_name', p.s('categoryName'))
-                  .toLowerCase()
-                  .contains(category.toLowerCase()))
-          .toList();
+    if (q.isNotEmpty &&
+        ((category != null && category.isNotEmpty) ||
+            (subcategory != null && subcategory.isNotEmpty))) {
+      products = products.where((p) {
+        final categoryMatches = category == null ||
+            category.isEmpty ||
+            p.s('category_id', p.s('categoryId')) == category;
+        final subcategoryMatches = subcategory == null ||
+            subcategory.isEmpty ||
+            p.s('subcategory_id', p.s('subcategoryId')) == subcategory;
+        return categoryMatches && subcategoryMatches;
+      }).toList();
     }
     return _sortProducts(products, sort);
   }
@@ -110,12 +118,26 @@ class CustomerRepository {
   }
 
   Future<List<Map<String, dynamic>>> categories() async {
-    final rows = await _gateway.categories(limit: 100, kind: 'product');
+    return catalogCategories(kind: 'product');
+  }
+
+  Future<List<Map<String, dynamic>>> catalogCategories(
+      {required String kind}) async {
+    final rows = await _gateway.categories(limit: 200, kind: kind);
+    return rows.map(_normalizeCategory).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> categoryChildren(String categoryId,
+      {required String kind}) async {
+    final rows = await _gateway.categoryChildren(categoryId, kind: kind);
     return rows.map(_normalizeCategory).toList();
   }
 
   Future<List<Map<String, dynamic>>> services(
-      {String? category, String? search}) async {
+      {String? category,
+      String? subcategory,
+      String? search,
+      String? sort}) async {
     final q = search?.trim() ?? '';
     List<Map<String, dynamic>> rows;
     if (q.isNotEmpty) {
@@ -123,10 +145,37 @@ class CustomerRepository {
       rows =
           raw.where((row) => row.s('type').toLowerCase() == 'service').toList();
     } else {
-      rows =
-          await _gateway.services(categoryId: category, query: null, limit: 50);
+      rows = await _gateway.services(
+          categoryId: category,
+          subcategoryId: subcategory,
+          query: null,
+          limit: 200);
     }
-    return rows.map(_normalizeService).toList();
+    final normalized = rows.map(_normalizeService).toList();
+    if (sort == 'low') {
+      normalized.sort((a, b) => a.n('price').compareTo(b.n('price')));
+    } else if (sort == 'high') {
+      normalized.sort((a, b) => b.n('price').compareTo(a.n('price')));
+    } else if (sort == 'newest') {
+      normalized.sort((a, b) => (int.tryParse(b.s('id')) ?? 0)
+          .compareTo(int.tryParse(a.s('id')) ?? 0));
+    }
+    return normalized;
+  }
+
+  Future<Set<String>> serviceWishlist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_serviceWishlistKey);
+    if (raw == null || raw.isEmpty) return {};
+    final decoded = jsonDecode(raw);
+    return decoded is List ? decoded.map((e) => e.toString()).toSet() : {};
+  }
+
+  Future<void> toggleServiceWishlist(String serviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final items = await serviceWishlist();
+    if (!items.add(serviceId)) items.remove(serviceId);
+    await prefs.setString(_serviceWishlistKey, jsonEncode(items.toList()));
   }
 
   Future<Map<String, dynamic>?> service(String id) async {
@@ -851,6 +900,10 @@ class CustomerRepository {
             data['comment_permission'] ??
             'everyone',
       },
+    ).timeout(
+      const Duration(seconds: 45),
+      onTimeout: () =>
+          throw const ApiException('Post creation timed out. Please retry.'),
     );
   }
 
@@ -953,12 +1006,33 @@ class CustomerRepository {
 
   /// Uploads a social media file and returns `{ 'url', 'type' }` (type is the
   /// backend-detected 'image' | 'video'), matching web's uploadMedia response.
-  Future<Map<String, dynamic>> uploadSocialMediaFile(File file) async {
-    final data = await _gateway.uploadSocialMedia(file);
+  Future<Map<String, dynamic>> uploadSocialMediaFile(File file,
+      {String? contentType}) async {
+    final data = await _gateway
+        .uploadSocialMedia(file, contentType: contentType)
+        .timeout(
+          const Duration(minutes: 2),
+          onTimeout: () =>
+              throw const ApiException('Media upload timed out. Please retry.'),
+        );
+    final payload = apiObject(data['data'] ?? data) ?? data;
+    final url =
+        payload.s('url', payload.s('fileUrl', payload.s('path'))).trim();
+    if (url.isEmpty) {
+      throw const ApiException('The media upload did not return a file URL.');
+    }
+    final type =
+        payload.s('mediaType', payload.s('media_type', 'image')).toLowerCase();
     return {
-      'url': data.s('url', data.s('fileUrl', data.s('path'))),
-      'type': data.s('mediaType', data.s('media_type', 'image')),
+      'id': payload.s('id', payload.s('mediaId')),
+      'url': url,
+      'type': type == 'video' ? 'video' : 'image',
     };
+  }
+
+  Future<void> deleteUploadedSocialMedia(String mediaId) async {
+    if (mediaId.trim().isEmpty) return;
+    await _gateway.deleteSocialMedia(mediaId.trim());
   }
 
   /// Product search for the create-post "link products" field (web uses
@@ -1585,6 +1659,8 @@ class CustomerRepository {
           row.s('vendorName',
               vendor.s('businessName', vendor.s('business_name')))),
       'category_name': row.s('category_name', row.s('categoryName')),
+      'category_id': row.s('category_id', row.s('categoryId')),
+      'subcategory_id': row.s('subcategory_id', row.s('subcategoryId')),
       'status':
           row.s('status', row['isActive'] == false ? 'inactive' : 'active'),
     };
@@ -1596,6 +1672,8 @@ class CustomerRepository {
       'id': row.s('id', row.s('serviceId')),
       'title': row.s('title', row.s('displayName', row.s('name'))),
       'price': row.n('price', row.n('basePrice')),
+      'original_price': row.n('originalPrice',
+          row.n('original_price', row.n('price', row.n('basePrice')))),
       'image': _imageFrom(row, const [
         'image',
         'imageUrl',
@@ -1609,6 +1687,9 @@ class CustomerRepository {
       ]),
       'vendor_id': row.s('vendor_id', row.s('vendorId')),
       'category_name': row.s('category_name', row.s('categoryName')),
+      'category_id': row.s('category_id', row.s('categoryId')),
+      'subcategory_id': row.s('subcategory_id', row.s('subcategoryId')),
+      'duration': row.s('duration', row.s('durationMinutes')),
       'status':
           row.s('status', row['isActive'] == false ? 'inactive' : 'active'),
     };

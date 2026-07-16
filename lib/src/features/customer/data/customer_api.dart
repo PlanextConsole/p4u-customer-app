@@ -91,17 +91,21 @@ class CustomerApi {
           query: await _catalogLocationQuery());
   Future<List<Map<String, dynamic>>> services(
           {String? categoryId,
+          String? subcategoryId,
           String? query,
           int limit = 20,
-          int offset = 0}) =>
+          int offset = 0}) async =>
       _api.getList('/api/v1/catalog/services', query: {
         'limit': limit,
         'offset': offset,
         'categoryId': categoryId,
-        'q': query
+        'subcategoryId': subcategoryId,
+        'q': query,
+        ...await _catalogLocationQuery()
       });
   Future<List<Map<String, dynamic>>> browseProducts(
           {String? categoryId,
+          String? subcategoryId,
           String? query,
           String? sort,
           int limit = 20,
@@ -110,6 +114,7 @@ class CustomerApi {
         'limit': limit,
         'offset': offset,
         'categoryId': categoryId,
+        'subcategoryId': subcategoryId,
         'q': query,
         'sort': sort,
         ...await _catalogLocationQuery()
@@ -400,8 +405,10 @@ class CustomerApi {
       _api.deleteJson('/api/v1/social/stories/$storyId', auth: true);
   Future<List<Map<String, dynamic>>> feedAds({int limit = 5}) => _api
       .getList('/api/v1/social/feed/ads', query: {'limit': limit}, auth: true);
-  Future<Map<String, dynamic>> uploadSocialMedia(File file) =>
-      _api.uploadFile('/api/v1/social/upload', file, auth: true);
+  Future<Map<String, dynamic>> uploadSocialMedia(File file,
+          {String? contentType}) =>
+      _api.uploadFile('/api/v1/social/upload', file,
+          contentType: contentType, auth: true);
   Future<Map<String, dynamic>> uploadMultipleSocialMedia(List<File> files) =>
       _api.uploadFiles('/api/v1/social/upload/multiple', files, auth: true);
   Future<Map<String, dynamic>> viewStory(String storyId) =>
