@@ -922,7 +922,11 @@ class _SetLocationPageState extends ConsumerState<SetLocationPage> {
       final value =
           'Live location: ${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
       _location.text = value;
-      await ref.read(customerRepositoryProvider).saveSelectedLocation(value);
+      await ref.read(customerRepositoryProvider).saveSelectedLocation(
+            value,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
       ref.invalidate(selectedLocationProvider);
       if (mounted) _snack('Live location selected');
     } catch (e) {

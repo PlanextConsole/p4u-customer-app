@@ -17,6 +17,8 @@ class CustomerRepository {
   static const _cartKey = 'p4u_customer_cart';
   static const _wishlistKey = 'p4u_customer_wishlist';
   static const _locationKey = 'p4u_customer_location';
+  static const _latitudeKey = 'p4u_customer_latitude';
+  static const _longitudeKey = 'p4u_customer_longitude';
 
   Future<CustomerHomeData> getHome() async {
     // Keep the home screen gentle on the public API. Parallel bursts can hit IP rate limits.
@@ -55,15 +57,15 @@ class CustomerRepository {
               row['type'] == null)
           .toList();
     } else {
-      rows = await _gateway.browseProducts(
-          categoryId: category, limit: 50);
+      rows = await _gateway.browseProducts(categoryId: category, limit: 50);
     }
     var products = rows.map(_normalizeProduct).toList();
     if (q.isNotEmpty && category != null && category.isNotEmpty) {
       products = products
           .where((p) =>
               p.s('category_id', p.s('categoryId')) == category ||
-              p.s('category_name', p.s('categoryName'))
+              p
+                  .s('category_name', p.s('categoryName'))
                   .toLowerCase()
                   .contains(category.toLowerCase()))
           .toList();
@@ -118,12 +120,11 @@ class CustomerRepository {
     List<Map<String, dynamic>> rows;
     if (q.isNotEmpty) {
       final raw = await _gateway.searchCatalog(query: q, limit: 50);
-      rows = raw
-          .where((row) => row.s('type').toLowerCase() == 'service')
-          .toList();
+      rows =
+          raw.where((row) => row.s('type').toLowerCase() == 'service').toList();
     } else {
-      rows = await _gateway.services(
-          categoryId: category, query: null, limit: 50);
+      rows =
+          await _gateway.services(categoryId: category, query: null, limit: 50);
     }
     return rows.map(_normalizeService).toList();
   }
@@ -152,8 +153,7 @@ class CustomerRepository {
         ? vendorId.trim()
         : await resolveVendorIdForService(service);
     if (resolvedVendor == null || resolvedVendor.isEmpty) {
-      throw const ApiException(
-          'This service is not linked to a provider yet.');
+      throw const ApiException('This service is not linked to a provider yet.');
     }
     await _gateway.createServiceBooking(
       {
@@ -171,7 +171,8 @@ class CustomerRepository {
   }
 
   /// Same resolve order as user-web `resolveServiceVendor.ts`.
-  Future<String?> resolveVendorIdForService(Map<String, dynamic> service) async {
+  Future<String?> resolveVendorIdForService(
+      Map<String, dynamic> service) async {
     final explicit = service.s('vendor_id', service.s('vendorId')).trim();
     if (explicit.isNotEmpty) return explicit;
     final serviceId = service.s('id', service.s('serviceId'));
@@ -205,10 +206,8 @@ class CustomerRepository {
     return rows
         .where((row) => row['available'] != false)
         .map((row) {
-          final value = row.s(
-              'value',
-              row.s('timeSlot',
-                  row.s('slot', row.s('start', row.s('time')))));
+          final value = row.s('value',
+              row.s('timeSlot', row.s('slot', row.s('start', row.s('time')))));
           final label = row.s('label', value);
           return {
             ...row,
@@ -315,19 +314,20 @@ class CustomerRepository {
       addressCount = (await customerAddresses(customerId)).length;
     } catch (_) {}
     try {
-      adsCount = 0; // "my ads" API not wired; don't count public classified browse
+      adsCount =
+          0; // "my ads" API not wired; don't count public classified browse
     } catch (_) {}
     try {
       final reward = await rewardPoints(customerId);
-      points = reward.n(
-          'displayAmount', reward.n('balance', reward.n('points')));
+      points =
+          reward.n('displayAmount', reward.n('balance', reward.n('points')));
     } catch (_) {}
     if (points == 0) {
       try {
         final wallet = await _gateway.walletSummary();
         final walletObj = apiObject(wallet) ?? wallet;
-        points = walletObj.n('displayAmount',
-            walletObj.n('balance', walletObj.n('points')));
+        points = walletObj.n(
+            'displayAmount', walletObj.n('balance', walletObj.n('points')));
       } catch (_) {}
     }
     return {
@@ -347,8 +347,8 @@ class CustomerRepository {
     final phone = row.s('phone', row.s('mobile'));
     final dob = row.s('dob', meta.s('dob'));
     final gender = row.s('gender', meta.s('gender'));
-    final avatar = meta.s('avatarUrl',
-        meta.s('avatar', row.s('avatarUrl', row.s('avatar'))));
+    final avatar = meta.s(
+        'avatarUrl', meta.s('avatar', row.s('avatarUrl', row.s('avatar'))));
     return {
       ...row,
       'id': row.s('id', row.s('customerId')),
@@ -420,8 +420,10 @@ class CustomerRepository {
   /// the web uses for avatars: POST /api/v1/social/upload).
   Future<String> uploadAvatar(File file) async {
     final data = await _gateway.uploadSocialMedia(file);
-    final raw = data.s('url',
-        data.s('fileUrl', data.s('file_url', data.s('path', data.s('publicUrl')))));
+    final raw = data.s(
+        'url',
+        data.s('fileUrl',
+            data.s('file_url', data.s('path', data.s('publicUrl')))));
     if (raw.isEmpty) return '';
     if (raw.startsWith('http') || raw.startsWith('assets/')) return raw;
     final normalized = raw.startsWith('/') ? raw : '/$raw';
@@ -487,20 +489,19 @@ class CustomerRepository {
       wallet = await _gateway.walletSummary();
     } catch (_) {}
 
-    var history = apiItems(
-        (wallet != null
-                ? (wallet['recentTransactions'] ??
-                    wallet['recentHistory'] ??
-                    wallet['transactions'])
-                : null) ??
-            data['recentHistory'] ??
-            data['history']);
+    var history = apiItems((wallet != null
+            ? (wallet['recentTransactions'] ??
+                wallet['recentHistory'] ??
+                wallet['transactions'])
+            : null) ??
+        data['recentHistory'] ??
+        data['history']);
     history = history.where((row) => !_isPointsReversal(row)).toList();
 
     num balance = 0;
     if (wallet != null) {
-      balance = wallet.n(
-          'displayAmount', wallet.n('balance', wallet.n('points')));
+      balance =
+          wallet.n('displayAmount', wallet.n('balance', wallet.n('points')));
     }
     if (balance == 0) {
       balance = data.n('balance', data.n('displayAmount', data.n('points')));
@@ -784,14 +785,18 @@ class CustomerRepository {
     return {
       ...row,
       'id': row.s('id', row.s('commentId')),
-      'user_id': row.s('user_id',
-          row.s('userId', row.s('authorId', author.s('id')))),
+      'user_id':
+          row.s('user_id', row.s('userId', row.s('authorId', author.s('id')))),
       'username': row.s(
           'username',
-          row.s('userName',
-              row.s('authorName', author.s('name', author.s('username', 'Planext user'))))),
-      'avatar': resolveMediaUrl(row.s('userAvatar',
-          row.s('avatarUrl', row.s('avatar', author.s('avatar', author.s('avatarUrl')))))),
+          row.s(
+              'userName',
+              row.s('authorName',
+                  author.s('name', author.s('username', 'Planext user'))))),
+      'avatar': resolveMediaUrl(row.s(
+          'userAvatar',
+          row.s('avatarUrl',
+              row.s('avatar', author.s('avatar', author.s('avatarUrl')))))),
       'content': row.s(
           'content', row.s('contentText', row.s('comment', row.s('body')))),
       'created_at': row.s('created_at', row.s('createdAt')),
@@ -838,9 +843,8 @@ class CustomerRepository {
         'location': data['location'],
         'tags': data['tags'] ?? const [],
         'category': data['category'] ?? 'general',
-        'linkedProducts': data['linkedProducts'] ??
-            data['linked_products'] ??
-            const [],
+        'linkedProducts':
+            data['linkedProducts'] ?? data['linked_products'] ?? const [],
         'hideLikeCount':
             data['hideLikeCount'] ?? data['hide_like_count'] ?? false,
         'commentPermission': data['commentPermission'] ??
@@ -852,15 +856,15 @@ class CustomerRepository {
 
   // ── Stories ────────────────────────────────────────────────────────────
   Map<String, dynamic> _normalizeStory(Map<String, dynamic> row) {
-    final mediaUrl = resolveMediaUrl(row.s('mediaUrl',
-        row.s('media_url', row.s('url', row.s('fileUrl')))));
+    final mediaUrl = resolveMediaUrl(
+        row.s('mediaUrl', row.s('media_url', row.s('url', row.s('fileUrl')))));
     return {
       ...row,
       'id': row.s('id', row.s('storyId')),
-      'user_id': row.s('user_id',
-          row.s('authorId', row.s('userId', row.s('author_id')))),
-      'username': row.s('username',
-          row.s('userName', row.s('authorName', 'Planext user'))),
+      'user_id': row.s(
+          'user_id', row.s('authorId', row.s('userId', row.s('author_id')))),
+      'username': row.s(
+          'username', row.s('userName', row.s('authorName', 'Planext user'))),
       'avatar': resolveMediaUrl(row.s('userAvatar',
           row.s('avatarUrl', row.s('avatar', row.s('user_avatar'))))),
       'media_url': mediaUrl,
@@ -888,16 +892,17 @@ class CustomerRepository {
   /// (mirrors the web story rail built by buildStoryItems).
   Future<Map<String, dynamic>> socialStories() async {
     if (!await apiSession.hasToken()) {
-      return {'mine': <Map<String, dynamic>>[], 'groups': <Map<String, dynamic>>[]};
+      return {
+        'mine': <Map<String, dynamic>>[],
+        'groups': <Map<String, dynamic>>[]
+      };
     }
     final fetched = await Future.wait([
       _gateway.myStories().catchError((_) => <Map<String, dynamic>>[]),
       _gateway.storyFeed().catchError((_) => <Map<String, dynamic>>[]),
     ]);
-    final mine =
-        fetched[0].map(_normalizeStory).where(_storyAlive).toList();
-    final others =
-        fetched[1].map(_normalizeStory).where(_storyAlive).toList();
+    final mine = fetched[0].map(_normalizeStory).where(_storyAlive).toList();
+    final others = fetched[1].map(_normalizeStory).where(_storyAlive).toList();
 
     final grouped = <String, Map<String, dynamic>>{};
     for (final s in others) {
@@ -961,7 +966,8 @@ class CustomerRepository {
   Future<List<Map<String, dynamic>>> socialProductSearch(String query) async {
     final q = query.trim();
     if (q.isEmpty) return [];
-    final raw = await _gateway.searchCatalog(query: q, type: 'product', limit: 8);
+    final raw =
+        await _gateway.searchCatalog(query: q, type: 'product', limit: 8);
     return raw
         .where((row) =>
             row.s('type', 'product').toLowerCase() == 'product' ||
@@ -1128,8 +1134,7 @@ class CustomerRepository {
           'variantId': variantId,
           'productName': product.s('title', product.s('name')),
           'productImage': product.s('image', product.s('thumbnailUrl')),
-          'vendorName':
-              product.s('vendor_name', product.s('vendorName')),
+          'vendorName': product.s('vendor_name', product.s('vendorName')),
         },
       });
       await _saveCart([]);
@@ -1205,7 +1210,8 @@ class CustomerRepository {
     }
   }
 
-  Future<CartSummary> cartSummary({int pointsUsed = 0, num couponDiscount = 0}) async {
+  Future<CartSummary> cartSummary(
+      {int pointsUsed = 0, num couponDiscount = 0}) async {
     final items = await cartItems();
     final subtotal =
         items.fold<num>(0, (sum, item) => sum + item.price * item.qty);
@@ -1223,10 +1229,8 @@ class CustomerRepository {
     num? grandTotal;
     if (await apiSession.hasToken() && items.isNotEmpty) {
       final quote = await _gateway.quoteCart(redeemPoints: pointsUsed);
-      platformFee =
-          quote.n('platformFee', quote.n('platform_fee')).toDouble();
-      deliveryFee =
-          quote.n('deliveryFee', quote.n('delivery_fee')).toDouble();
+      platformFee = quote.n('platformFee', quote.n('platform_fee')).toDouble();
+      deliveryFee = quote.n('deliveryFee', quote.n('delivery_fee')).toDouble();
       gstOnPlatformFee = quote
           .n('gstOnPlatformFee', quote.n('gst_on_platform_fee'))
           .toDouble();
@@ -1243,8 +1247,8 @@ class CustomerRepository {
       meetsMinCart = quote['meetsMinCart'] != false;
       final gt = quote['grandTotal'] ?? quote['grand_total'];
       if (gt != null) {
-        grandTotal = quote.n('grandTotal', quote.n('grand_total')) -
-            couponDiscount;
+        grandTotal =
+            quote.n('grandTotal', quote.n('grand_total')) - couponDiscount;
         if (grandTotal < 0) grandTotal = 0;
       }
     }
@@ -1453,10 +1457,8 @@ class CustomerRepository {
           'productId': productId,
           'name': row.s('productName', row.s('name', fallbackTitle)),
           'title': row.s('productName', row.s('title', fallbackTitle)),
-          'image':
-              row.s('productImage', row.s('image', fallbackImage)),
-          'price':
-              row.n('productPrice', row.n('price', fallbackPrice)),
+          'image': row.s('productImage', row.s('image', fallbackImage)),
+          'price': row.n('productPrice', row.n('price', fallbackPrice)),
         }));
       }
       return products;
@@ -1477,9 +1479,17 @@ class CustomerRepository {
     return prefs.getString(_locationKey);
   }
 
-  Future<void> saveSelectedLocation(String value) async {
+  Future<void> saveSelectedLocation(String value,
+      {double? latitude, double? longitude}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_locationKey, value);
+    if (latitude != null && longitude != null) {
+      await prefs.setDouble(_latitudeKey, latitude);
+      await prefs.setDouble(_longitudeKey, longitude);
+    } else {
+      await prefs.remove(_latitudeKey);
+      await prefs.remove(_longitudeKey);
+    }
   }
 
   CartItem _cartItemFromApi(Map<String, dynamic> row) {
@@ -1493,23 +1503,18 @@ class CustomerRepository {
     // Line UUID from commerce API (`id`) — required for DELETE/PATCH cart item.
     final lineId = merged.s('id', merged.s('itemId', merged.s('item_id')));
     final productId = merged.s('productId', merged.s('product_id'));
-    final variantId = merged.s(
-        'variationId',
-        merged.s(
-            'variation_id', meta.s('variantId', meta.s('variationId'))));
+    final variantId = merged.s('variationId',
+        merged.s('variation_id', meta.s('variantId', meta.s('variationId'))));
     final title = merged.s(
         'title',
-        merged.s(
-            'name',
-            merged.s(
-                'productName', meta.s('productName', meta.s('title')))));
+        merged.s('name',
+            merged.s('productName', meta.s('productName', meta.s('title')))));
     final image = merged.s(
         'image',
-        merged.s(
-            'thumbnailUrl',
+        merged.s('thumbnailUrl',
             meta.s('productImage', meta.s('thumbnailUrl', meta.s('image')))));
-    final vendor = merged.s(
-        'vendorName', merged.s('vendor_name', meta.s('vendorName')));
+    final vendor =
+        merged.s('vendorName', merged.s('vendor_name', meta.s('vendorName')));
     return CartItem(
       id: lineId.isNotEmpty ? lineId : productId,
       productId: productId.isNotEmpty ? productId : lineId,
@@ -1662,9 +1667,12 @@ class CustomerRepository {
     final meta = row['metadata'] is Map
         ? Map<String, dynamic>.from(row['metadata'] as Map)
         : <String, dynamic>{};
-    final media = _mediaList(row).map(resolveMediaUrl).where((u) => u.isNotEmpty).toList();
-    final postType =
-        row.s('post_type', row.s('postType', row.s('media_type', row.s('mediaType'))));
+    final media = _mediaList(row)
+        .map(resolveMediaUrl)
+        .where((u) => u.isNotEmpty)
+        .toList();
+    final postType = row.s('post_type',
+        row.s('postType', row.s('media_type', row.s('mediaType'))));
     // Linked products (metadata.linkedProducts on the server) → {id,name,image,price,vendorId}.
     final rawLinked = (row['linkedProducts'] ??
         row['linked_products'] ??
@@ -1690,9 +1698,14 @@ class CustomerRepository {
       ...row,
       'avatar': resolveMediaUrl(row.s(
           'userAvatar',
-          row.s('avatarUrl',
-              row.s('avatar', row.s('authorAvatar', author.s('avatar',
-                  author.s('avatarUrl', author.s('userAvatar')))))))),
+          row.s(
+              'avatarUrl',
+              row.s(
+                  'avatar',
+                  row.s(
+                      'authorAvatar',
+                      author.s('avatar',
+                          author.s('avatarUrl', author.s('userAvatar')))))))),
       'is_following': row['isFollowing'] == true ||
           row['isFollowingAuthor'] == true ||
           row['following'] == true,
@@ -1710,8 +1723,8 @@ class CustomerRepository {
       'id': row.s('id', row.s('postId')),
       'user_id': row.s(
           'user_id',
-          row.s('authorId',
-              row.s('userId', author.s('id', author.s('userId'))))),
+          row.s(
+              'authorId', row.s('userId', author.s('id', author.s('userId'))))),
       'username': row.s(
           'username',
           row.s(
@@ -1733,14 +1746,12 @@ class CustomerRepository {
               'thumbnailUrl',
               'thumbnail_url'
             ])),
-      'likes_count': row.i(
-          'likes_count',
-          row.i('like_count',
-              row.i('likesCount', row.i('likeCount')))),
+      'likes_count': row.i('likes_count',
+          row.i('like_count', row.i('likesCount', row.i('likeCount')))),
       'comments_count': row.i(
           'comments_count',
-          row.i('comment_count',
-              row.i('commentsCount', row.i('commentCount')))),
+          row.i(
+              'comment_count', row.i('commentsCount', row.i('commentCount')))),
       'liked': row['liked'] == true ||
           row['isLiked'] == true ||
           row['hasLiked'] == true,
@@ -1785,8 +1796,8 @@ class CustomerRepository {
       'payment_status': row.s('payment_status', row.s('paymentStatus')),
       'payment_ref': row.s(
           'payment_ref',
-          row.s('paymentRefId',
-              row.s('paymentReferenceId', row.s('paymentId')))),
+          row.s(
+              'paymentRefId', row.s('paymentReferenceId', row.s('paymentId')))),
       'vendor_id': row.s('vendor_id', row.s('vendorId', meta.s('vendorId'))),
       'vendor_name': () {
         final direct =
@@ -1807,7 +1818,8 @@ class CustomerRepository {
           row.n('delivery_fee', row.n('deliveryFee', meta.n('deliveryFee'))),
       'platform_fee':
           row.n('platform_fee', row.n('platformFee', meta.n('platformFee'))),
-      'gst': row.n('gst', row.n('gstOnPlatformFee', meta.n('gstOnPlatformFee'))),
+      'gst':
+          row.n('gst', row.n('gstOnPlatformFee', meta.n('gstOnPlatformFee'))),
       'subtotal':
           row.n('subtotal', row.n('itemSubtotal', meta.n('itemSubtotal'))),
     };
@@ -1845,11 +1857,13 @@ class CustomerRepository {
       final pid = item.s('productId', item.s('product_id', item.s('id')));
       final p = productMap[pid];
       final currentTitle = item.s('title');
-      final title = (currentTitle.isEmpty || currentTitle == 'Item') && p != null
-          ? p.s('title', 'Item')
-          : (currentTitle.isEmpty ? 'Item' : currentTitle);
+      final title =
+          (currentTitle.isEmpty || currentTitle == 'Item') && p != null
+              ? p.s('title', 'Item')
+              : (currentTitle.isEmpty ? 'Item' : currentTitle);
       final currentImage = item.s('image');
-      final image = currentImage.isNotEmpty ? currentImage : (p?.s('image') ?? '');
+      final image =
+          currentImage.isNotEmpty ? currentImage : (p?.s('image') ?? '');
       final currentPrice = item.n('price');
       final price = currentPrice > 0 ? currentPrice : (p?.n('price') ?? 0);
       if (vendorIdForName.isEmpty) vendorIdForName = p?.s('vendor_id') ?? '';
@@ -1933,8 +1947,7 @@ class CustomerRepository {
           'service_name',
           row.s(
               'serviceName',
-              row.s(
-                  'serviceTitle',
+              row.s('serviceTitle',
                   meta.s('serviceName', meta.s('serviceTitle'))))),
       'vendor_name':
           row.s('vendor_name', row.s('vendorName', meta.s('vendorName'))),
@@ -1944,6 +1957,7 @@ class CustomerRepository {
       'status': row.s('status', 'pending'),
     };
   }
+
   Map<String, dynamic> _normalizeAddress(Map<String, dynamic> row) => {
         ...row,
         'id': row.s('id', row.s('addressId')),

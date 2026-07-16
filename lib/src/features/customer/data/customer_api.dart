@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/services/api_client.dart';
 
@@ -6,6 +9,28 @@ class CustomerApi {
   CustomerApi({ApiClient? api}) : _api = api ?? ApiClient();
 
   final ApiClient _api;
+
+  Future<Map<String, Object?>> _catalogLocationQuery() async {
+    final prefs = await SharedPreferences.getInstance();
+    final latitude = prefs.getDouble('p4u_customer_latitude');
+    final longitude = prefs.getDouble('p4u_customer_longitude');
+    Map<String, dynamic> profile = const {};
+    final profileJson = prefs.getString('p4u_customer_profile');
+    if (profileJson != null) {
+      try {
+        final decoded = jsonDecode(profileJson);
+        if (decoded is Map) profile = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return {
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (profile['district']?.toString().trim().isNotEmpty == true)
+        'district': profile['district'].toString().trim(),
+      if (profile['state']?.toString().trim().isNotEmpty == true)
+        'state': profile['state'].toString().trim(),
+    };
+  }
 
   Future<Map<String, dynamic>> authHealth() =>
       _api.getJson('/api/auth/public/health');
@@ -44,17 +69,26 @@ class CustomerApi {
       _api.getList('/api/v1/catalog/categories/$categoryId/children',
           query: {'kind': kind});
   Future<List<Map<String, dynamic>>> vendors(
-          {String? vendorKind, int limit = 20, int offset = 0}) =>
-      _api.getList('/api/v1/catalog/vendors',
-          query: {'limit': limit, 'offset': offset, 'vendorKind': vendorKind});
-  Future<Map<String, dynamic>> vendor(String vendorId) =>
-      _api.getJson('/api/v1/catalog/vendors/$vendorId');
+          {String? vendorKind, int limit = 20, int offset = 0}) async =>
+      _api.getList('/api/v1/catalog/vendors', query: {
+        'limit': limit,
+        'offset': offset,
+        'vendorKind': vendorKind,
+        ...await _catalogLocationQuery()
+      });
+  Future<Map<String, dynamic>> vendor(String vendorId) async =>
+      _api.getJson('/api/v1/catalog/vendors/$vendorId',
+          query: await _catalogLocationQuery());
   Future<List<Map<String, dynamic>>> vendorProducts(String vendorId,
-          {int limit = 20, int offset = 0}) =>
-      _api.getList('/api/v1/catalog/vendors/$vendorId/products',
-          query: {'limit': limit, 'offset': offset});
-  Future<Map<String, dynamic>> product(String productId) =>
-      _api.getJson('/api/v1/catalog/products/$productId');
+          {int limit = 20, int offset = 0}) async =>
+      _api.getList('/api/v1/catalog/vendors/$vendorId/products', query: {
+        'limit': limit,
+        'offset': offset,
+        ...await _catalogLocationQuery()
+      });
+  Future<Map<String, dynamic>> product(String productId) async =>
+      _api.getJson('/api/v1/catalog/products/$productId',
+          query: await _catalogLocationQuery());
   Future<List<Map<String, dynamic>>> services(
           {String? categoryId,
           String? query,
@@ -71,27 +105,37 @@ class CustomerApi {
           String? query,
           String? sort,
           int limit = 20,
-          int offset = 0}) =>
+          int offset = 0}) async =>
       _api.getList('/api/v1/catalog/browse/products', query: {
         'limit': limit,
         'offset': offset,
         'categoryId': categoryId,
         'q': query,
-        'sort': sort
+        'sort': sort,
+        ...await _catalogLocationQuery()
       });
   Future<Map<String, dynamic>> service(String serviceId) =>
       _api.getJson('/api/v1/catalog/services/$serviceId');
   Future<List<Map<String, dynamic>>> serviceVendorOffers(String serviceId,
-          {int limit = 20, int offset = 0}) =>
+          {int limit = 20, int offset = 0}) async =>
       _api.getList('/api/v1/catalog/browse/services/$serviceId/vendors',
-          query: {'limit': limit, 'offset': offset});
+          query: {
+            'limit': limit,
+            'offset': offset,
+            ...await _catalogLocationQuery()
+          });
   Future<List<Map<String, dynamic>>> searchCatalog(
           {required String query,
           String? type,
           int limit = 20,
-          int offset = 0}) =>
-      _api.getList('/api/v1/catalog/search',
-          query: {'q': query, 'type': type, 'limit': limit, 'offset': offset});
+          int offset = 0}) async =>
+      _api.getList('/api/v1/catalog/search', query: {
+        'q': query,
+        'type': type,
+        'limit': limit,
+        'offset': offset,
+        ...await _catalogLocationQuery()
+      });
 
   Future<Map<String, dynamic>> profileHealth() =>
       _api.getJson('/api/v1/profile/public/health');
@@ -158,6 +202,7 @@ class CustomerApi {
     return _api.postJson('/api/v1/commerce/orders/from-cart',
         body: body, auth: true);
   }
+
   Future<Map<String, dynamic>> createDirectOrder(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/orders', body: body, auth: true);
   Future<List<Map<String, dynamic>>> customerOrders(String customerId) =>
@@ -181,8 +226,7 @@ class CustomerApi {
       _api.getList('/api/v1/commerce/bookings/vendor', auth: true);
   Future<List<Map<String, dynamic>>> availableSlots(
       {String? vendorId, String? serviceId, String? date}) async {
-    final data = await _api.getJson(
-        '/api/v1/commerce/bookings/available-slots',
+    final data = await _api.getJson('/api/v1/commerce/bookings/available-slots',
         query: {'vendorId': vendorId, 'serviceId': serviceId, 'date': date},
         auth: true);
     final body = apiObject(data) ?? data;
@@ -190,6 +234,7 @@ class CustomerApi {
     if (data['slots'] is List) return apiItems(data['slots']);
     return apiItems(body);
   }
+
   Future<Map<String, dynamic>> createReview(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/reviews', body: body, auth: true);
   Future<List<Map<String, dynamic>>> reviews(
@@ -353,9 +398,8 @@ class CustomerApi {
       _api.postJson('/api/v1/social/stories', body: body, auth: true);
   Future<Map<String, dynamic>> deleteStory(String storyId) =>
       _api.deleteJson('/api/v1/social/stories/$storyId', auth: true);
-  Future<List<Map<String, dynamic>>> feedAds({int limit = 5}) =>
-      _api.getList('/api/v1/social/feed/ads',
-          query: {'limit': limit}, auth: true);
+  Future<List<Map<String, dynamic>>> feedAds({int limit = 5}) => _api
+      .getList('/api/v1/social/feed/ads', query: {'limit': limit}, auth: true);
   Future<Map<String, dynamic>> uploadSocialMedia(File file) =>
       _api.uploadFile('/api/v1/social/upload', file, auth: true);
   Future<Map<String, dynamic>> uploadMultipleSocialMedia(List<File> files) =>
