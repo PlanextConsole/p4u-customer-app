@@ -12,6 +12,7 @@ import 'features/customer/presentation/pages/commerce_pages.dart';
 import 'features/customer/presentation/pages/property_pages.dart';
 import 'features/customer/presentation/pages/service_classified_pages.dart';
 import 'features/customer/presentation/pages/social_pages.dart';
+import 'features/customer/presentation/pages/vendor_register_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final protectedPaths = <String>[

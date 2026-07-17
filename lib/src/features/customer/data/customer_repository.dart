@@ -133,6 +133,115 @@ class CustomerRepository {
     return rows.map(_normalizeCategory).toList();
   }
 
+  Future<String?> checkVendorPhoneUnique(String phone) async {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 10) return null;
+    try {
+      final data = await _gateway.vendorPhoneStatus('+91$digits');
+      if (data['available'] == false) {
+        return 'This mobile number is already registered as a vendor.';
+      }
+      final status = data.s('status').toLowerCase();
+      if (['registered', 'pending', 'submitted', 'approved'].contains(status)) {
+        return 'A vendor account or application with this phone number already exists.';
+      }
+    } catch (_) {
+      // Submission remains authoritative if this optional check is unavailable.
+    }
+    return null;
+  }
+
+  Future<String?> checkVendorEmailUnique(String email) async => null;
+
+  Future<String> uploadRegistrationFile(
+      File file, String field, String contentType) async {
+    final data = await _gateway.uploadVendorRegistrationFile(file, contentType);
+    final url = data.s('url', data.s('fileUrl', data.s('path'))).trim();
+    if (url.isEmpty) {
+      throw const ApiException('The document upload did not return a URL.');
+    }
+    return resolveMediaUrl(url);
+  }
+
+  Future<void> submitVendorApplication(Map<String, dynamic> form) async {
+    final kind = form.s('category', 'product').toLowerCase() == 'service'
+        ? 'service'
+        : 'product';
+    final categoryOrService = form.s('subcategory').trim();
+    final address = form.s('shop_address').trim();
+    String normalizedPhone(String value) {
+      final digits = value.replaceAll(RegExp(r'\D'), '');
+      return digits.length == 10 ? '+91$digits' : value;
+    }
+
+    final accountNumber = form.s('bank_account_number').trim();
+    final bankAccounts = accountNumber.isEmpty &&
+            form.s('bank_holder_name').trim().isEmpty &&
+            form.s('bank_ifsc').trim().isEmpty
+        ? <Map<String, dynamic>>[]
+        : <Map<String, dynamic>>[
+            {
+              'id': 'primary-${DateTime.now().millisecondsSinceEpoch}',
+              'bankName': '',
+              'accountHolderName': form.s('bank_holder_name').trim(),
+              'accountNumber': accountNumber,
+              'ifscCode': form.s('bank_ifsc').trim().toUpperCase(),
+              'accountType': 'savings',
+              'isPrimary': true,
+            }
+          ];
+
+    String? optional(String key) {
+      final value = form.s(key).trim();
+      return value.isEmpty ? null : value;
+    }
+
+    await _gateway.submitVendorApplication({
+      'vendorKind': kind,
+      'vendorType': kind == 'service' ? 'SERVICE' : 'PRODUCT',
+      'ownerName': form.s('name').trim(),
+      'businessName': form.s('business_name').trim(),
+      'email': optional('email'),
+      'phone': normalizedPhone(form.s('phone')),
+      'gst': optional('gst_number'),
+      'pan': optional('pan_number'),
+      'categoriesJson': kind == 'product' && categoryOrService.isNotEmpty
+          ? [categoryOrService]
+          : null,
+      'servicesJson': kind == 'service' && categoryOrService.isNotEmpty
+          ? [categoryOrService]
+          : null,
+      'addressJson': {
+        'state': optional('state'),
+        'stateName': optional('state'),
+        'district': optional('district'),
+        'areaLocality': address.isEmpty ? null : address,
+        'address': address.isEmpty ? null : address,
+        'secondaryPhone': form.s('secondary_phone').trim().isEmpty
+            ? null
+            : normalizedPhone(form.s('secondary_phone')),
+        'facebook': optional('fb_link'),
+        'instagram': optional('instagram_link'),
+        'latitude': form['latitude'],
+        'longitude': form['longitude'],
+      },
+      'documentsJson': {
+        'storeLogo': optional('store_logo_url'),
+        'gstCertificateFileName': optional('gst_certificate_url'),
+        'gstCertificate': optional('gst_certificate_url'),
+        'gstCertificateUrl': optional('gst_certificate_url'),
+        'fssai': optional('fssai_url'),
+        'panCardFileName': optional('pan_image_url'),
+        'panImage': optional('pan_image_url'),
+        'panCardUrl': optional('pan_image_url'),
+        'aadhaarFront': optional('aadhaar_front_url'),
+        'aadhaarBack': optional('aadhaar_back_url'),
+        'aadhaarCardUrl': optional('aadhaar_front_url'),
+      },
+      'bankJson': {'version': 1, 'accounts': bankAccounts},
+    });
+  }
+
   Future<List<Map<String, dynamic>>> services(
       {String? category,
       String? subcategory,
@@ -992,7 +1101,11 @@ class CustomerRepository {
       'mediaType': mediaType,
       if (textOverlay != null && textOverlay.trim().isNotEmpty)
         'textOverlay': textOverlay.trim(),
-    });
+    }).timeout(
+      const Duration(seconds: 45),
+      onTimeout: () =>
+          throw const ApiException('Story creation timed out. Please retry.'),
+    );
   }
 
   Future<void> viewSocialStory(String storyId) async {

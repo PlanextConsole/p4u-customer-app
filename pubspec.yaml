@@ -1,7 +1,7 @@
 name: p4u_customer_app
 description: Native Flutter Customer App for Planext4u.
 publish_to: "none"
-version: 5.37.0+83
+version: 5.37.1+84
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

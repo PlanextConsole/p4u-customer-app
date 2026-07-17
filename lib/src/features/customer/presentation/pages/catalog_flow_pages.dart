@@ -163,6 +163,10 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
         _subcategories = rows;
         _step =
             rows.isEmpty ? _CatalogStep.results : _CatalogStep.subcategories;
+        // When children exist there is no follow-up results request to clear
+        // this flag. Without this assignment the subcategory page displays a
+        // permanent progress indicator even though its data has arrived.
+        _loading = rows.isEmpty;
       });
       if (rows.isEmpty) await _loadResults();
     } catch (error) {

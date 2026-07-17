@@ -128,6 +128,7 @@ class ApiClient {
   );
 
   static Future<void> _requestQueue = Future.value();
+  static const _jsonRequestTimeout = Duration(seconds: 30);
 
   final ApiSession session;
   final _http = HttpClient()..connectionTimeout = const Duration(seconds: 20);
@@ -369,12 +370,20 @@ class ApiClient {
     Object? body,
     bool auth = false,
   }) async {
-    final request = await _http.openUrl(method, _uri(path, query));
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    request.headers.contentType = ContentType.json;
-    if (auth) await _attachAuth(request);
-    if (body != null) request.write(jsonEncode(body));
-    return _decodeResponse(await request.close());
+    return (() async {
+      final request = await _http.openUrl(method, _uri(path, query));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.contentType = ContentType.json;
+      if (auth) await _attachAuth(request);
+      if (body != null) request.write(jsonEncode(body));
+      return _decodeResponse(await request.close());
+    })()
+        .timeout(
+      _jsonRequestTimeout,
+      onTimeout: () => throw const ApiException(
+        'The server took too long to respond. Please retry.',
+      ),
+    );
   }
 
   Future<void> _refreshAuthDeduped() {

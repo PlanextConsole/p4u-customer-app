@@ -80,8 +80,7 @@ class CustomerProfilePage extends ConsumerWidget {
                                     color: AppColors.primary)));
                       }
                       return ClipOval(
-                        child: RemoteImage(
-                            url: avatar, width: 68, height: 68),
+                        child: RemoteImage(url: avatar, width: 68, height: 68),
                       );
                     }),
                     const SizedBox(width: 14),
@@ -237,8 +236,7 @@ class _CustomerProfileEditPageState
             final p = profile ?? <String, dynamic>{};
             _name.text = p.s('name', p.s('fullName', auth.name));
             _email.text = p.s('email', auth.email);
-            _mobile.text =
-                _digits(p.s('phone', p.s('mobile', auth.mobile)));
+            _mobile.text = _digits(p.s('phone', p.s('mobile', auth.mobile)));
             final meta = p['metadata'];
             final metaMap = meta is Map
                 ? Map<String, dynamic>.from(meta)
@@ -276,7 +274,8 @@ class _CustomerProfileEditPageState
                                   child: _avatarUrl.isEmpty
                                       ? Container(
                                           color: AppColors.softGreen,
-                                          child: const Icon(Icons.person_rounded,
+                                          child: const Icon(
+                                              Icons.person_rounded,
                                               size: 44,
                                               color: AppColors.primary),
                                         )
@@ -291,8 +290,7 @@ class _CustomerProfileEditPageState
                                 shape: const CircleBorder(),
                                 child: InkWell(
                                   customBorder: const CircleBorder(),
-                                  onTap:
-                                      _avatarUploading ? null : _pickAvatar,
+                                  onTap: _avatarUploading ? null : _pickAvatar,
                                   child: Padding(
                                     padding: const EdgeInsets.all(6),
                                     child: _avatarUploading
@@ -372,15 +370,15 @@ class _CustomerProfileEditPageState
                           prefixIcon: Icon(Icons.wc_rounded),
                           labelText: 'Gender'),
                       items: _genders
-                          .map((g) =>
-                              DropdownMenuItem(value: g, child: Text(g)))
+                          .map(
+                              (g) => DropdownMenuItem(value: g, child: Text(g)))
                           .toList(),
                       onChanged: (v) => setState(() => _gender = v),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      initialValue: _occupations.any(
-                              (o) => o['id']?.toString() == _occupationId)
+                      initialValue: _occupations
+                              .any((o) => o['id']?.toString() == _occupationId)
                           ? _occupationId
                           : null,
                       isExpanded: true,
@@ -396,10 +394,12 @@ class _CustomerProfileEditPageState
                           .toList(),
                       onChanged: (v) => setState(() {
                         _occupationId = v;
-                        _occupationName = _occupations.firstWhere(
-                              (o) => o['id']?.toString() == v,
-                              orElse: () => const {},
-                            )['name']?.toString() ??
+                        _occupationName = _occupations
+                                .firstWhere(
+                                  (o) => o['id']?.toString() == v,
+                                  orElse: () => const {},
+                                )['name']
+                                ?.toString() ??
                             '';
                       }),
                     ),
@@ -1249,13 +1249,13 @@ class CustomerReferralPage extends ConsumerWidget {
     final codeRow = await repo.myReferralCode();
     final code = (codeRow == null)
         ? ''
-        : codeRow.s('code',
-            codeRow.s('referralCode', codeRow.s('referral_code')));
+        : codeRow.s(
+            'code', codeRow.s('referralCode', codeRow.s('referral_code')));
     final profile = await repo.profile(id) ?? {};
     final fallback = code.isNotEmpty
         ? code
-        : profile.s('referral_code',
-            profile.s('referralCode', profile.s('code')));
+        : profile.s(
+            'referral_code', profile.s('referralCode', profile.s('code')));
     return (fallback, await repo.referrals(id));
   }
 }
@@ -1381,8 +1381,8 @@ class _CustomerKYCPageState extends ConsumerState<CustomerKYCPage> {
                               child: ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(doc.s('document_type')),
-                            subtitle: Text(doc.s('documentNumber',
-                                doc.s('document_number'))),
+                            subtitle: Text(doc.s(
+                                'documentNumber', doc.s('document_number'))),
                             trailing: StatusBadge(doc.s('status', 'pending')),
                             onTap: doc.s('url').isEmpty
                                 ? null
@@ -1589,69 +1589,6 @@ class CustomerChangePasswordPage extends ConsumerWidget {
                   },
                   icon: const Icon(Icons.save_rounded),
                   label: const Text('Save Password'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class VendorRegisterPage extends ConsumerStatefulWidget {
-  const VendorRegisterPage({super.key});
-
-  @override
-  ConsumerState<VendorRegisterPage> createState() => _VendorRegisterPageState();
-}
-
-class _VendorRegisterPageState extends ConsumerState<VendorRegisterPage> {
-  final _business = TextEditingController();
-  final _category = TextEditingController();
-  final _notes = TextEditingController();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
-    if (auth == null) return const LoginRequiredPage();
-    return CustomerScaffold(
-      title: 'Become a Seller',
-      showBack: true,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AppCard(
-            child: Column(
-              children: [
-                TextField(
-                    controller: _business,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.storefront_rounded),
-                        hintText: 'Business name')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: _category,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.category_rounded),
-                        hintText: 'Category')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: _notes,
-                    minLines: 3,
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.notes_rounded),
-                        hintText: 'Tell us about your business')),
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text(
-                            'Vendor registration requires the vendor API flow from the collection.')));
-                  },
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text('Submit Application'),
                 ),
               ],
             ),

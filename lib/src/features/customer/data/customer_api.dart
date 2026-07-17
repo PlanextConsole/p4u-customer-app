@@ -44,6 +44,15 @@ class CustomerApi {
   Future<Map<String, dynamic>> registerCustomerByPhone(
           Map<String, dynamic> body) =>
       _api.postJson('/api/auth/public/customer/register-by-phone', body: body);
+  Future<Map<String, dynamic>> vendorPhoneStatus(String phone) => _api
+      .postJson('/api/auth/public/vendor/phone-status', body: {'phone': phone});
+  Future<Map<String, dynamic>> submitVendorApplication(
+          Map<String, dynamic> body) =>
+      _api.postJson('/api/auth/public/vendor/register', body: body);
+  Future<Map<String, dynamic>> uploadVendorRegistrationFile(
+          File file, String contentType) =>
+      _api.uploadFile('/api/v1/vendor/register/upload', file,
+          contentType: contentType, auth: true);
   Future<Map<String, dynamic>> refreshToken(String refreshToken) =>
       _api.postJson('/api/auth/public/refresh',
           body: {'refreshToken': refreshToken});
