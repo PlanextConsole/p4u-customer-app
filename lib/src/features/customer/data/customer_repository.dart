@@ -974,12 +974,36 @@ class CustomerRepository {
                 'title': row.s('title'),
                 'caption': row.s('caption'),
                 'advertiser': row.s('advertiser'),
-                'image': resolveMediaUrl(row.s('image', row.s('imageUrl'))),
+                'image': resolveMediaUrl(row.s(
+                    'mobileImage', row.s('image', row.s('imageUrl')))),
                 'redirect_url': row.s('redirectUrl', row.s('redirect_url')),
               })
           .toList();
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> socialAdConfig() async {
+    if (!await apiSession.hasToken()) {
+      return const {'adEveryN': 5, 'mode': 'prefer_admin_then_admob'};
+    }
+    try {
+      final row = await _gateway.feedAdConfig();
+      final every = row.i('adEveryN', 5).clamp(1, 100);
+      const modes = {
+        'prefer_admin_then_admob',
+        'alternate',
+        'admin_only',
+        'admob_only',
+      };
+      final mode = row.s('mode', 'prefer_admin_then_admob');
+      return {
+        'adEveryN': every,
+        'mode': modes.contains(mode) ? mode : 'prefer_admin_then_admob',
+      };
+    } catch (_) {
+      return const {'adEveryN': 5, 'mode': 'prefer_admin_then_admob'};
     }
   }
 

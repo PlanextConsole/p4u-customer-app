@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -14,6 +15,7 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/customer_scaffold.dart';
 import '../../../../core/widgets/remote_image.dart';
 import '../../../../core/widgets/social_video.dart';
+import '../../../../core/ads/admob_banner_card.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import 'account_pages.dart';
@@ -39,10 +41,11 @@ class SocialFeedPage extends ConsumerWidget {
             onPressed: () => context.push('/app/social/messages'),
             icon: const Icon(Icons.send_rounded)),
       ],
-      child: FutureBuilder<List<List<Map<String, dynamic>>>>(
-        future: Future.wait([
+      child: FutureBuilder<List<dynamic>>(
+        future: Future.wait<dynamic>([
           ref.read(customerRepositoryProvider).socialFeed(),
           ref.read(customerRepositoryProvider).socialFeedAds(),
+          ref.read(customerRepositoryProvider).socialAdConfig(),
         ]),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -52,19 +55,25 @@ class SocialFeedPage extends ConsumerWidget {
               ? snapshot.data![0]
               : const <Map<String, dynamic>>[];
           final ads = (snapshot.data?.length ?? 0) > 1
-              ? snapshot.data![1]
+              ? snapshot.data![1] as List<Map<String, dynamic>>
               : const <Map<String, dynamic>>[];
-          // Interleave a sponsored ad after every 3rd post (web parity).
+          final config = (snapshot.data?.length ?? 0) > 2
+              ? snapshot.data![2] as Map<String, dynamic>
+              : const {'adEveryN': 5, 'mode': 'prefer_admin_then_admob'};
+          final adEveryN = (config['adEveryN'] as int? ?? 5).clamp(1, 100);
           final feedChildren = <Widget>[];
-          var adIndex = 0;
           for (var i = 0; i < posts.length; i++) {
             feedChildren.add(Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: SocialPostCard(post: posts[i])));
-            if ((i + 1) % 3 == 0 && adIndex < ads.length) {
+            if ((i + 1) % adEveryN == 0) {
               feedChildren.add(Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: SponsoredAdCard(ad: ads[adIndex++])));
+                  child: _HybridSocioAdSlot(
+                    slotIndex: (i + 1) ~/ adEveryN - 1,
+                    ads: ads,
+                    config: config,
+                  )));
             }
           }
           return RefreshIndicator(
@@ -72,7 +81,7 @@ class SocialFeedPage extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const _SocialStoryRail(),
+                _SocialStoryRail(ads: ads, config: config),
                 const SizedBox(height: 12),
                 _SocialQuickNav(),
                 const SizedBox(height: 12),
@@ -391,15 +400,108 @@ class SocialCreatePostPage extends ConsumerStatefulWidget {
 }
 
 /// Sponsored ad card interleaved into the feed (web SponsoredAdCard).
+Future<void> _openAdminSocioAd(
+    BuildContext context, Map<String, dynamic> ad) async {
+  final target = ad.s('targetType', ad.s('target_type')).toLowerCase();
+  final productId = ad.s('productId', ad.s('product_id'));
+  final vendorId = ad.s('vendorId', ad.s('vendor_id'));
+  if (target == 'product' && productId.isNotEmpty) {
+    await context.push('/app/product/$productId');
+    return;
+  }
+  if (target == 'vendor' && vendorId.isNotEmpty) {
+    await context.push('/app/vendor/$vendorId');
+    return;
+  }
+  final redirect = ad.s('redirect_url', ad.s('redirectUrl'));
+  if (redirect.isEmpty) return;
+  if (redirect.startsWith('/app/')) {
+    await context.push(redirect);
+    return;
+  }
+  final uri = Uri.tryParse(redirect);
+  if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+class _HybridSocioAdSlot extends StatelessWidget {
+  const _HybridSocioAdSlot({
+    required this.slotIndex,
+    required this.ads,
+    required this.config,
+    this.compact = false,
+  });
+
+  final int slotIndex;
+  final List<Map<String, dynamic>> ads;
+  final Map<String, dynamic> config;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = config['mode'] as String? ?? 'prefer_admin_then_admob';
+    final admin = ads.isEmpty ? null : ads[slotIndex % ads.length];
+    final wantsAdmin = mode == 'admin_only' ||
+        mode == 'prefer_admin_then_admob' ||
+        (mode == 'alternate' && slotIndex.isEven);
+    if (wantsAdmin && admin != null) {
+      return SponsoredAdCard(ad: admin, compact: compact);
+    }
+    if (mode == 'admin_only') return const SizedBox.shrink();
+    return AdMobBannerCard(compact: compact);
+  }
+}
+
 class SponsoredAdCard extends StatelessWidget {
-  const SponsoredAdCard({required this.ad, super.key});
+  const SponsoredAdCard({required this.ad, this.compact = false, super.key});
   final Map<String, dynamic> ad;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final image = ad.s('image');
+    if (compact) {
+      return SizedBox(
+        width: 260,
+        child: AppCard(
+          padding: EdgeInsets.zero,
+          onTap: () => _openAdminSocioAd(context, ad),
+          child: Row(
+            children: [
+              if (image.isNotEmpty)
+                RemoteImage(
+                    url: image,
+                    height: 88,
+                    width: 92,
+                    borderRadius: 0),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Sponsored',
+                          style: TextStyle(
+                              fontSize: 10, color: AppColors.primary)),
+                      const SizedBox(height: 4),
+                      Text(ad.s('advertiser', ad.s('title', 'Advertisement')),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return AppCard(
       padding: EdgeInsets.zero,
+      onTap: () => _openAdminSocioAd(context, ad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1630,7 +1732,10 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
 /// "Your Story" (opens the composer / your segments), followed by other users'
 /// stories with a teal ring when unviewed — mirrors the web story rail.
 class _SocialStoryRail extends ConsumerStatefulWidget {
-  const _SocialStoryRail();
+  const _SocialStoryRail({required this.ads, required this.config});
+
+  final List<Map<String, dynamic>> ads;
+  final Map<String, dynamic> config;
 
   @override
   ConsumerState<_SocialStoryRail> createState() => _SocialStoryRailState();
@@ -1664,6 +1769,8 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
           final mine = (data['mine'] as List?) ?? const [];
           final groups = (data['groups'] as List?) ?? const [];
           final hasMine = mine.isNotEmpty;
+          final adEveryN =
+              (widget.config['adEveryN'] as int? ?? 5).clamp(1, 100);
           return ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -1688,8 +1795,16 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
                   _reload();
                 },
               ),
-              for (final raw in groups)
+              if (hasMine && 1 % adEveryN == 0)
+                _HybridSocioAdSlot(
+                  slotIndex: 0,
+                  ads: widget.ads,
+                  config: widget.config,
+                  compact: true,
+                ),
+              for (final entry in groups.indexed) ...[
                 Builder(builder: (context) {
+                  final raw = entry.$2;
                   final g = Map<String, dynamic>.from(raw as Map);
                   final segs = (g['segments'] as List?) ?? const [];
                   final unviewed =
@@ -1709,6 +1824,15 @@ class _SocialStoryRailState extends ConsumerState<_SocialStoryRail> {
                     },
                   );
                 }),
+                if ((entry.$1 + 1 + (hasMine ? 1 : 0)) % adEveryN == 0)
+                  _HybridSocioAdSlot(
+                    slotIndex:
+                        (entry.$1 + 1 + (hasMine ? 1 : 0)) ~/ adEveryN - 1,
+                    ads: widget.ads,
+                    config: widget.config,
+                    compact: true,
+                  ),
+              ],
             ],
           );
         },

@@ -414,6 +414,8 @@ class CustomerApi {
       _api.deleteJson('/api/v1/social/stories/$storyId', auth: true);
   Future<List<Map<String, dynamic>>> feedAds({int limit = 5}) => _api
       .getList('/api/v1/social/feed/ads', query: {'limit': limit}, auth: true);
+  Future<Map<String, dynamic>> feedAdConfig() =>
+      _api.getJson('/api/v1/social/feed/ad-config', auth: true);
   Future<Map<String, dynamic>> uploadSocialMedia(File file,
           {String? contentType}) =>
       _api.uploadFile('/api/v1/social/upload', file,
