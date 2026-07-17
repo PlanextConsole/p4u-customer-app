@@ -2783,14 +2783,6 @@ class _SocialSettingsPageState extends ConsumerState<SocialSettingsPage> {
   }
 }
 
-class SocialChangePasswordPage extends StatelessWidget {
-  const SocialChangePasswordPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialSettingsForm(
-      title: 'Social Password', fields: ['New password', 'Confirm password']);
-}
-
 class SocialPrivacyPage extends StatelessWidget {
   const SocialPrivacyPage({super.key});
 
@@ -2808,7 +2800,7 @@ class SocialSecurityPage extends StatelessWidget {
   Widget build(BuildContext context) => const _SocialPlaceholder(
       title: 'Security',
       icon: Icons.security_rounded,
-      message: 'Review login sessions, password settings and account safety.');
+      message: 'Review login sessions and account safety.');
 }
 
 class SocialNotificationSettingsPage extends StatelessWidget {
@@ -3025,41 +3017,6 @@ class _SettingsTile extends StatelessWidget {
               const Icon(Icons.chevron_right_rounded)
             ])),
       );
-}
-
-class _SocialSettingsForm extends StatelessWidget {
-  const _SocialSettingsForm({required this.title, required this.fields});
-  final String title;
-  final List<String> fields;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomerScaffold(
-      title: title,
-      showBack: true,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AppCard(
-            child: Column(
-              children: [
-                for (final field in fields) ...[
-                  TextField(
-                      obscureText: field.toLowerCase().contains('password'),
-                      decoration: InputDecoration(hintText: field)),
-                  const SizedBox(height: 12),
-                ],
-                FilledButton(
-                    onPressed: () => ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('Saved'))),
-                    child: const Text('Save')),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _SocialPlaceholder extends StatelessWidget {

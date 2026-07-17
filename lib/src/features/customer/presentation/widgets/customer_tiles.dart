@@ -81,6 +81,17 @@ class ProductTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style:
                         const TextStyle(color: AppColors.muted, fontSize: 12)),
+                if (product.containsKey('orderCount') ||
+                    product.containsKey('order_count')) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '${product.i('orderCount', product.i('order_count'))} completed orders',
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -137,6 +148,17 @@ class ServiceTile extends StatelessWidget {
                 Text(service.s('category_name'),
                     style:
                         const TextStyle(color: AppColors.muted, fontSize: 12)),
+                if (service.containsKey('bookingCount') ||
+                    service.containsKey('booking_count')) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '${service.i('bookingCount', service.i('booking_count'))} completed bookings',
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(money(service.n('price')),
                     style: const TextStyle(

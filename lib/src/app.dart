@@ -28,7 +28,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     '/app/classifieds/post',
     '/app/vendor-register',
     '/app/support',
-    '/app/change-password',
     '/app/account-control',
     '/app/social',
     '/app/find-home/post',
@@ -76,15 +75,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/app/register',
           builder: (_, __) => const CustomerRegisterPage()),
-      GoRoute(
-          path: '/app/forgot-password',
-          builder: (_, __) => const ForgotPasswordPage()),
-      GoRoute(
-          path: '/app/reset-password',
-          builder: (_, __) => const ResetPasswordPage()),
-      GoRoute(
-          path: '/app/set-password',
-          builder: (_, __) => const SetPasswordPage()),
       GoRoute(
           path: '/app/set-location',
           builder: (_, __) => const SetLocationPage()),
@@ -162,9 +152,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/app/support',
           builder: (_, __) => const CustomerSupportPage()),
-      GoRoute(
-          path: '/app/change-password',
-          builder: (_, __) => const CustomerChangePasswordPage()),
       GoRoute(
           path: '/app/account-control',
           builder: (_, __) => const AccountControlPage()),
@@ -252,9 +239,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/app/social/channels',
           builder: (_, __) => const SocialBroadcastPage()),
-      GoRoute(
-          path: '/app/social/change-password',
-          builder: (_, __) => const SocialChangePasswordPage()),
       GoRoute(
           path: '/app/social/privacy',
           builder: (_, __) => const SocialPrivacyPage()),

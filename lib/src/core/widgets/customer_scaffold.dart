@@ -147,9 +147,6 @@ String? _fallbackRoute(String path) {
   if (path.startsWith('/app/find-home/')) return '/app/find-home';
   if (path == '/app/login' ||
       path == '/app/register' ||
-      path == '/app/forgot-password' ||
-      path == '/app/reset-password' ||
-      path == '/app/set-password' ||
       path == '/app/set-location') {
     return '/app';
   }

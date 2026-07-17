@@ -31,42 +31,17 @@ class CustomerLoginPage extends ConsumerStatefulWidget {
 }
 
 class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
   final _phone = TextEditingController();
   final _otp = TextEditingController();
-  bool _passwordMode = false;
-  bool _showPassword = false;
   bool _otpSent = false;
   bool _loading = false;
   String? _verificationId;
 
   @override
   void dispose() {
-    _email.dispose();
-    _password.dispose();
     _phone.dispose();
     _otp.dispose();
     super.dispose();
-  }
-
-  Future<void> _submitPassword() async {
-    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
-      _snack('Please enter email and password');
-      return;
-    }
-    setState(() => _loading = true);
-    try {
-      await ref
-          .read(authRepositoryProvider)
-          .signInWithPassword(_email.text.trim(), _password.text);
-      ref.invalidate(customerAuthStateProvider);
-      if (mounted) context.go(_returnTo);
-    } catch (e) {
-      _snack(_friendly(e));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   Future<void> _sendOtp() async {
@@ -230,43 +205,15 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                             children: [
                               const Align(
                                 alignment: Alignment.centerLeft,
-                                child: Text('Choose sign-in method',
+                                child: Text('Phone OTP sign-in',
                                     style: TextStyle(
                                         fontSize: 13,
                                         color: AppColors.muted,
                                         fontWeight: FontWeight.w700)),
                               ),
                               const SizedBox(height: 10),
-                              _modeSwitch(),
                               const SizedBox(height: 16),
-                              if (_passwordMode) ...[
-                                TextField(
-                                  controller: _email,
-                                  keyboardType: TextInputType.emailAddress,
-                                  decoration: const InputDecoration(
-                                      prefixIcon:
-                                          Icon(Icons.mail_outline_rounded),
-                                      hintText: 'Enter E-mail ID'),
-                                ),
-                                const SizedBox(height: 14),
-                                TextField(
-                                  controller: _password,
-                                  obscureText: !_showPassword,
-                                  decoration: InputDecoration(
-                                    prefixIcon:
-                                        const Icon(Icons.lock_outline_rounded),
-                                    hintText: 'Password',
-                                    suffixIcon: IconButton(
-                                      onPressed: () => setState(
-                                          () => _showPassword = !_showPassword),
-                                      icon: Icon(_showPassword
-                                          ? Icons.visibility_off_rounded
-                                          : Icons.visibility_rounded),
-                                    ),
-                                  ),
-                                  onSubmitted: (_) => _submitPassword(),
-                                ),
-                              ] else if (!_otpSent) ...[
+                              if (!_otpSent) ...[
                                 TextField(
                                   controller: _phone,
                                   keyboardType: TextInputType.phone,
@@ -305,9 +252,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                               FilledButton.icon(
                                 onPressed: _loading
                                     ? null
-                                    : (_passwordMode
-                                        ? _submitPassword
-                                        : (_otpSent ? _verifyOtp : _sendOtp)),
+                                    : (_otpSent ? _verifyOtp : _sendOtp),
                                 icon: _loading
                                     ? const SizedBox(
                                         width: 18,
@@ -315,40 +260,23 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2,
                                             color: AppColors.primary))
-                                    : Icon(_passwordMode
-                                        ? Icons.login_rounded
-                                        : (_otpSent
-                                            ? Icons.verified_user_rounded
-                                            : Icons.arrow_forward_rounded)),
+                                    : Icon(_otpSent
+                                        ? Icons.verified_user_rounded
+                                        : Icons.arrow_forward_rounded),
                                 label: Text(_loading
                                     ? 'Please wait...'
-                                    : (_passwordMode
-                                        ? 'Sign In'
-                                        : (_otpSent
-                                            ? 'Verify OTP'
-                                            : 'Send OTP'))),
+                                    : (_otpSent
+                                        ? 'Verify OTP'
+                                        : 'Send OTP')),
                                 style: _authOutlineStyle(
                                     minimumSize: const Size.fromHeight(52)),
                               ),
                               const SizedBox(height: 10),
-                              Row(children: [
-                                Expanded(
-                                  child: TextButton(
-                                      onPressed: () =>
-                                          context.push('/app/forgot-password'),
-                                      child: const Text('Forgot password?')),
-                                ),
-                                Container(
-                                    width: 1,
-                                    height: 18,
-                                    color: AppColors.border),
-                                Expanded(
-                                  child: TextButton(
-                                      onPressed: () =>
-                                          context.push('/app/register'),
-                                      child: const Text('Create account')),
-                                ),
-                              ]),
+                              TextButton(
+                                onPressed: () => context.push('/app/register'),
+                                child: const Text(
+                                    'New customer? Register with phone OTP'),
+                              ),
                             ],
                           ),
                         ),
@@ -357,79 +285,6 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _modeSwitch() {
-    return Container(
-      height: 50,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(12),
-          color: AppColors.productSurface),
-      child: Row(
-        children: [
-          _modeButton(
-              label: 'Phone OTP',
-              icon: Icons.phone_rounded,
-              selected: !_passwordMode,
-              onTap: () => setState(() => _passwordMode = false)),
-          _modeButton(
-              label: 'Password',
-              icon: Icons.mail_outline_rounded,
-              selected: _passwordMode,
-              onTap: () => setState(() => _passwordMode = true)),
-        ],
-      ),
-    );
-  }
-
-  Widget _modeButton(
-      {required String label,
-      required IconData icon,
-      required bool selected,
-      required VoidCallback onTap}) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          height: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            border: Border.all(
-                color: selected ? AppColors.primary : Colors.transparent),
-            borderRadius: BorderRadius.circular(9),
-            boxShadow: selected
-                ? const [BoxShadow(color: Colors.black12, blurRadius: 5)]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon,
-                  size: 18,
-                  color: selected ? AppColors.primary : AppColors.muted),
-              const SizedBox(width: 6),
-              Flexible(
-                  child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(label,
-                          maxLines: 1,
-                          softWrap: false,
-                          style: TextStyle(
-                              color: selected
-                                  ? AppColors.primary
-                                  : AppColors.brandDark,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800)))),
             ],
           ),
         ),
@@ -456,8 +311,6 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
   final _occupation = TextEditingController();
   final _referral = TextEditingController();
   final _otp = TextEditingController();
-  final _password = TextEditingController();
-  final _confirmPassword = TextEditingController();
   bool _accepted = false;
   bool _otpSent = false;
   bool _verified = false;
@@ -473,8 +326,6 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
     _occupation.dispose();
     _referral.dispose();
     _otp.dispose();
-    _password.dispose();
-    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -563,12 +414,6 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
 
   Future<void> _register() async {
     if (_firebaseToken == null) return _snack('Please verify OTP first');
-    if (_password.text.length < 8) {
-      return _snack('Password must be at least 8 characters');
-    }
-    if (_password.text != _confirmPassword.text) {
-      return _snack('Passwords do not match');
-    }
     setState(() => _loading = true);
     try {
       await ref.read(authRepositoryProvider).registerWithFirebaseIdToken(
@@ -582,7 +427,6 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
             referralCode:
                 _referral.text.trim().isEmpty ? null : _referral.text.trim(),
           );
-      await ref.read(authRepositoryProvider).updatePassword(_password.text);
       ref.invalidate(customerAuthStateProvider);
       if (mounted) context.go('/app/set-location');
     } catch (e) {
@@ -691,24 +535,11 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
                 ] else ...[
                   const StatusBadge('phone verified'),
                   const SizedBox(height: 12),
-                  TextField(
-                      controller: _password,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.lock_rounded),
-                          hintText: 'Create password')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: _confirmPassword,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.lock_outline_rounded),
-                          hintText: 'Confirm password')),
-                  const SizedBox(height: 14),
                   FilledButton.icon(
                       onPressed: _loading ? null : _register,
                       icon: const Icon(Icons.person_add_rounded),
-                      label: Text(_loading ? 'Creating...' : 'Create Account'),
+                      label: Text(
+                          _loading ? 'Creating...' : 'Complete Registration'),
                       style: _authOutlineStyle()),
                 ],
               ],
@@ -724,126 +555,6 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
 
   void _snack(String message) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(message)));
-}
-
-class ForgotPasswordPage extends ConsumerStatefulWidget {
-  const ForgotPasswordPage({super.key});
-
-  @override
-  ConsumerState<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
-}
-
-class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
-  final _email = TextEditingController();
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SimpleAuthShell(
-      title: 'Forgot Password',
-      child: Column(
-        children: [
-          TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.mail_rounded),
-                  hintText: 'Email address')),
-          const SizedBox(height: 14),
-          FilledButton(
-            onPressed: _loading
-                ? null
-                : () async {
-                    setState(() => _loading = true);
-                    try {
-                      await ref
-                          .read(authRepositoryProvider)
-                          .sendPasswordReset(_email.text.trim());
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Password reset email sent.')));
-                      }
-                    } finally {
-                      if (mounted) setState(() => _loading = false);
-                    }
-                  },
-            child: Text(_loading ? 'Sending...' : 'Send Reset Link'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ResetPasswordPage extends StatelessWidget {
-  const ResetPasswordPage({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const SetPasswordPage(title: 'Reset Password');
-}
-
-class SetPasswordPage extends ConsumerStatefulWidget {
-  const SetPasswordPage({this.title = 'Set Password', super.key});
-
-  final String title;
-
-  @override
-  ConsumerState<SetPasswordPage> createState() => _SetPasswordPageState();
-}
-
-class _SetPasswordPageState extends ConsumerState<SetPasswordPage> {
-  final _password = TextEditingController();
-  final _confirm = TextEditingController();
-  bool _loading = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SimpleAuthShell(
-      title: widget.title,
-      child: Column(
-        children: [
-          TextField(
-              controller: _password,
-              obscureText: true,
-              decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.lock_rounded),
-                  hintText: 'New password')),
-          const SizedBox(height: 12),
-          TextField(
-              controller: _confirm,
-              obscureText: true,
-              decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
-                  hintText: 'Confirm password')),
-          const SizedBox(height: 14),
-          FilledButton(
-            onPressed: _loading
-                ? null
-                : () async {
-                    if (_password.text.length < 8 ||
-                        _password.text != _confirm.text) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Check password and confirmation.')));
-                      return;
-                    }
-                    setState(() => _loading = true);
-                    try {
-                      await ref
-                          .read(authRepositoryProvider)
-                          .updatePassword(_password.text);
-                      if (context.mounted) context.go('/app');
-                    } finally {
-                      if (mounted) setState(() => _loading = false);
-                    }
-                  },
-            child: Text(_loading ? 'Saving...' : 'Save Password'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class SetLocationPage extends ConsumerStatefulWidget {

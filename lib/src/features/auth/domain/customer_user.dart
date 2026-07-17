@@ -6,7 +6,6 @@ class CustomerUser {
     required this.mobile,
     this.customerId,
     this.supabaseUid,
-    this.passwordSet = false,
     this.justLoggedIn = false,
   });
 
@@ -16,7 +15,6 @@ class CustomerUser {
   final String mobile;
   final String? customerId;
   final String? supabaseUid;
-  final bool passwordSet;
   final bool justLoggedIn;
 
   factory CustomerUser.fromRole(
@@ -36,7 +34,6 @@ class CustomerUser {
       name: customer?['name']?.toString() ?? 'Customer',
       email: email,
       mobile: customer?['mobile']?.toString() ?? '',
-      passwordSet: role['password_set'] == true,
     );
   }
 
@@ -68,7 +65,6 @@ class CustomerUser {
       name: name,
       email: email,
       mobile: mobile,
-      passwordSet: true,
     );
   }
 }

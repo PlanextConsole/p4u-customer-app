@@ -1539,66 +1539,6 @@ class AccountControlPage extends ConsumerWidget {
   }
 }
 
-class CustomerChangePasswordPage extends ConsumerWidget {
-  const CustomerChangePasswordPage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final password = TextEditingController();
-    final confirm = TextEditingController();
-    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
-    if (auth == null) return const LoginRequiredPage();
-    return CustomerScaffold(
-      title: 'Change Password',
-      showBack: true,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AppCard(
-            child: Column(
-              children: [
-                TextField(
-                    controller: password,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.lock_rounded),
-                        hintText: 'New password')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: confirm,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.lock_outline_rounded),
-                        hintText: 'Confirm password')),
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: () async {
-                    if (password.text.length < 8 ||
-                        password.text != confirm.text) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Check password and confirmation')));
-                      return;
-                    }
-                    await ref
-                        .read(authRepositoryProvider)
-                        .updatePassword(password.text);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Password updated')));
-                    }
-                  },
-                  icon: const Icon(Icons.save_rounded),
-                  label: const Text('Save Password'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _StatCard extends StatelessWidget {
   const _StatCard(this.label, this.value);
   final String label;

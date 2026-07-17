@@ -72,11 +72,6 @@ class AuthRepository {
     }
   }
 
-  Future<CustomerUser> signInWithPassword(String email, String password) async {
-    throw const ApiException(
-        'Password login is not available in the new API yet. Please use Phone OTP.');
-  }
-
   Future<CustomerUser> signInWithFirebaseIdToken(String firebaseIdToken) async {
     final exchange = await _gateway.phoneOtpExchange(firebaseIdToken);
     final auth = _authPayloadFromPhoneExchange(exchange);
@@ -147,22 +142,6 @@ class AuthRepository {
     if (profile != null) await apiSession.saveProfile(profile);
     return CustomerUser.fromApi(profile ?? auth,
         fallbackId: auth['customerId']?.toString());
-  }
-
-  Future<void> updatePassword(String password) async {
-    if (!await apiSession.hasToken()) return;
-    await _api
-        .postJson(
-          '/api/auth/change-password',
-          body: {'currentPassword': '', 'newPassword': password},
-          auth: true,
-        )
-        .catchError((_) => <String, dynamic>{});
-  }
-
-  Future<void> sendPasswordReset(String email) async {
-    throw const ApiException(
-        'Password reset is not available in the new API yet. Please use Phone OTP.');
   }
 
   Future<void> signOut() async {
