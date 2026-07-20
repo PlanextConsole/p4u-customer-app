@@ -905,10 +905,37 @@ class CustomerProductPage extends ConsumerStatefulWidget {
 }
 
 class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
+  late Future<
+      (
+        Map<String, dynamic>?,
+        List<Map<String, dynamic>>,
+        Map<String, dynamic>,
+        List<Map<String, dynamic>>
+      )> _productFuture;
   int _qty = 1;
   int _imageIndex = 0;
   Map<String, String> _attrs = {};
   Map<String, dynamic>? _matchedVariant;
+
+  @override
+  void initState() {
+    super.initState();
+    _productFuture = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerProductPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) {
+      _qty = 1;
+      _imageIndex = 0;
+      _attrs = {};
+      _matchedVariant = null;
+      _productFuture = _load();
+    }
+  }
+
+  void _retryLoad() => setState(() => _productFuture = _load());
 
   List<String> _gallery(Map<String, dynamic> product) {
     final urls = <String>[];
@@ -970,8 +997,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
     return keys;
   }
 
-  List<String> _attrValues(
-      List<Map<String, dynamic>> variants, String key) {
+  List<String> _attrValues(List<Map<String, dynamic>> variants, String key) {
     final values = <String>{};
     for (final v in variants) {
       final attrs = v['attributes'] ?? v['selectedAttributes'] ?? v['options'];
@@ -988,11 +1014,28 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
       title: 'Product',
       showBack: true,
       child: FutureBuilder<
-          (Map<String, dynamic>?, List<Map<String, dynamic>>, Map<String, dynamic>, List<Map<String, dynamic>>)>(
-        future: _load(),
+          (
+            Map<String, dynamic>?,
+            List<Map<String, dynamic>>,
+            Map<String, dynamic>,
+            List<Map<String, dynamic>>
+          )>(
+        future: _productFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'Product unavailable',
+              message: snapshot.error.toString(),
+              action: FilledButton.icon(
+                onPressed: _retryLoad,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+            );
           }
           final product = snapshot.data?.$1;
           if (product == null) {
@@ -1008,8 +1051,8 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
           num price = product.n('price');
           final variant = _matchedVariant;
           if (variant != null) {
-            price = variant.n(
-                'finalPrice', variant.n('sellPrice', variant.n('price', price)));
+            price = variant.n('finalPrice',
+                variant.n('sellPrice', variant.n('price', price)));
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -1091,8 +1134,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                   Align(
                       alignment: Alignment.centerLeft,
                       child: Text(key,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w800))),
+                          style: const TextStyle(fontWeight: FontWeight.w800))),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
@@ -1151,8 +1193,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                           .toggleWishlist(widget.id);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Wishlist updated')));
+                            const SnackBar(content: Text('Wishlist updated')));
                       }
                     },
                     icon: const Icon(Icons.favorite_rounded),
@@ -1163,8 +1204,8 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
               OutlinedButton.icon(
                 onPressed: product.s('vendor_id').isEmpty
                     ? null
-                    : () => context
-                        .push('/app/vendor/${product.s('vendor_id')}'),
+                    : () =>
+                        context.push('/app/vendor/${product.s('vendor_id')}'),
                 icon: const Icon(Icons.storefront_rounded),
                 label: const Text('View Seller'),
               ),
@@ -1356,7 +1397,8 @@ class CustomerCartPage extends ConsumerWidget {
                     if (cart.deliveryFee > 0)
                       _TotalRow('Delivery', cart.deliveryFee),
                     if (cart.surgeCost > 0) _TotalRow('Surge', cart.surgeCost),
-                    if (cart.discount > 0) _TotalRow('Discount', -cart.discount),
+                    if (cart.discount > 0)
+                      _TotalRow('Discount', -cart.discount),
                     if (cart.pointsRedeemedValue > 0)
                       _TotalRow('Points redeemed', -cart.pointsRedeemedValue),
                     if (cart.couponDiscount > 0)
@@ -1479,8 +1521,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                         Text(address.s('name', auth.name),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w900)),
-                        Text(
-                            address.s('address_line', address.s('address'))),
+                        Text(address.s('address_line', address.s('address'))),
                         Text('${address.s('city')} ${address.s('pincode')}'),
                       ]),
           ),
@@ -1496,7 +1537,8 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                     hintText:
                         'Max ${summary.maxRedeemableValue.round()} pts / balance ${summary.walletBalanceBefore.round()}',
                     prefixIcon: const Icon(Icons.stars_rounded),
-                    suffixIcon: TextButton(onPressed: _load, child: const Text('Apply')),
+                    suffixIcon: TextButton(
+                        onPressed: _load, child: const Text('Apply')),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1519,8 +1561,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                               content: Text(
                                   'Coupon applied: ${money(discount)} off')));
                         } catch (e) {
-                          messenger
-                              .showSnackBar(SnackBar(content: Text('$e')));
+                          messenger.showSnackBar(SnackBar(content: Text('$e')));
                         }
                       },
                       child: const Text('Apply'),
@@ -1548,8 +1589,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                 if (summary.discount > 0)
                   _TotalRow('Discount', -summary.discount),
                 if (summary.pointsRedeemedValue > 0)
-                  _TotalRow(
-                      'Points redeemed', -summary.pointsRedeemedValue),
+                  _TotalRow('Points redeemed', -summary.pointsRedeemedValue),
                 if (summary.couponDiscount > 0)
                   _TotalRow('Coupon', -summary.couponDiscount),
                 const Divider(),
@@ -1626,8 +1666,8 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                'Order placed: ${order.s('orderRef', order.s('id'))}')));
+            content:
+                Text('Order placed: ${order.s('orderRef', order.s('id'))}')));
       }
       if (_payMethod == 'online') {
         final intent = await repo.createPaymentIntentForOrder(
@@ -1640,9 +1680,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
           await Future<void>.delayed(const Duration(seconds: 2));
           final status = await repo.paymentIntentStatus(intentId);
           final st = status.s('status').toLowerCase();
-          if (st == 'succeeded' ||
-              st == 'completed' ||
-              st == 'captured') {
+          if (st == 'succeeded' || st == 'completed' || st == 'captured') {
             paid = true;
             break;
           }
@@ -1815,8 +1853,8 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                     Row(children: [
                       Expanded(
                           child: Text(
-                              order.s('orderRef', order.s('order_ref',
-                                  order.s('id'))),
+                              order.s('orderRef',
+                                  order.s('order_ref', order.s('id'))),
                               style: const TextStyle(
                                   fontWeight: FontWeight.w900))),
                       StatusBadge(order.s('status', 'placed'))
@@ -1847,18 +1885,17 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.s('title'),
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w800)),
-                                const SizedBox(height: 2),
-                                Text(
-                                    '${item.i('qty', 1)} x ${money(item.n('price'))}',
-                                    style:
-                                        const TextStyle(color: AppColors.muted)),
-                              ],
-                            )),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.s('title'),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text(
+                                '${item.i('qty', 1)} x ${money(item.n('price'))}',
+                                style: const TextStyle(color: AppColors.muted)),
+                          ],
+                        )),
                         Text(money(item.n('price') * item.i('qty', 1)),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w800)),
@@ -1907,8 +1944,7 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                           color: AppColors.primary),
                       const SizedBox(width: 10),
                       Expanded(
-                          child: Text(
-                              order.s('vendor_name', 'Seller'),
+                          child: Text(order.s('vendor_name', 'Seller'),
                               style: const TextStyle(
                                   fontWeight: FontWeight.w800))),
                       if (order.s('vendor_id').isNotEmpty)
@@ -2068,8 +2104,7 @@ class CustomerVendorPage extends ConsumerWidget {
                               if (vendor.s('mobile').isNotEmpty)
                                 InkWell(
                                   onTap: () => launchUrl(Uri(
-                                      scheme: 'tel',
-                                      path: vendor.s('mobile'))),
+                                      scheme: 'tel', path: vendor.s('mobile'))),
                                   child: Text(vendor.s('mobile'),
                                       style: const TextStyle(
                                           color: AppColors.primary,

@@ -163,6 +163,9 @@ class CustomerProfileEditPage extends ConsumerStatefulWidget {
 
 class _CustomerProfileEditPageState
     extends ConsumerState<CustomerProfileEditPage> {
+  Future<Map<String, dynamic>?>? _profileFuture;
+  Future<List<Map<String, dynamic>>>? _addressesFuture;
+  String? _loadedCustomerId;
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _mobile = TextEditingController();
@@ -186,6 +189,27 @@ class _CustomerProfileEditPageState
   bool _avatarUploading = false;
   bool _isDefaultAddress = false;
   bool _initialized = false;
+
+  void _ensureDataFutures(String customerId) {
+    if (_loadedCustomerId == customerId &&
+        _profileFuture != null &&
+        _addressesFuture != null) {
+      return;
+    }
+    _loadedCustomerId = customerId;
+    final repo = ref.read(customerRepositoryProvider);
+    _profileFuture = repo.profile(customerId);
+    _addressesFuture = repo.customerAddresses(customerId);
+  }
+
+  void _reloadProfile(String customerId) {
+    _profileFuture = ref.read(customerRepositoryProvider).profile(customerId);
+  }
+
+  void _reloadAddresses(String customerId) {
+    _addressesFuture =
+        ref.read(customerRepositoryProvider).customerAddresses(customerId);
+  }
 
   @override
   void initState() {
@@ -223,12 +247,32 @@ class _CustomerProfileEditPageState
   Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
+    _ensureDataFutures(auth.id);
     return CustomerScaffold(
       title: 'Edit Profile',
       showBack: true,
       child: FutureBuilder<Map<String, dynamic>?>(
-        future: ref.read(customerRepositoryProvider).profile(auth.id),
+        future: _profileFuture,
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !_initialized) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError && !_initialized) {
+            return EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'Profile unavailable',
+              message: snapshot.error.toString(),
+              action: FilledButton.icon(
+                onPressed: () => setState(() {
+                  _profileFuture =
+                      ref.read(customerRepositoryProvider).profile(auth.id);
+                }),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+            );
+          }
           final profile = snapshot.data;
           if (!_initialized &&
               snapshot.connectionState == ConnectionState.done) {
@@ -431,15 +475,27 @@ class _CustomerProfileEditPageState
               ),
               const SectionHeader(title: 'Saved Addresses'),
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: ref
-                    .read(customerRepositoryProvider)
-                    .customerAddresses(auth.id),
+                future: _addressesFuture,
                 builder: (context, snapshot) {
                   final addresses = snapshot.data ?? [];
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Padding(
                       padding: EdgeInsets.all(18),
                       child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return EmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Addresses unavailable',
+                      message: snapshot.error.toString(),
+                      action: TextButton.icon(
+                        onPressed: () => setState(() {
+                          _reloadAddresses(auth.id);
+                        }),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
+                      ),
                     );
                   }
                   if (addresses.isEmpty) {
@@ -651,6 +707,7 @@ class _CustomerProfileEditPageState
         if (_avatarUrl.isNotEmpty) 'avatar': _avatarUrl,
       });
       ref.invalidate(customerAuthStateProvider);
+      if (mounted) setState(() => _reloadProfile(customerId));
       _snack('Profile updated');
     } catch (e) {
       _snack('Could not update profile. Please try again.');
@@ -751,7 +808,7 @@ class _CustomerProfileEditPageState
       _pincode.clear();
       _isDefaultAddress = false;
       _snack('Address saved');
-      setState(() {});
+      setState(() => _reloadAddresses(customerId));
     } catch (e) {
       _snack('Could not save address. Please try again.');
     } finally {

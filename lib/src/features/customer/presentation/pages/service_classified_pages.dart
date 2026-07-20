@@ -82,6 +82,17 @@ class _CustomerServicesPageState extends ConsumerState<CustomerServicesPage> {
                       height: 300,
                       child: Center(child: CircularProgressIndicator()));
                 }
+                if (snapshot.hasError) {
+                  return EmptyState(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load services',
+                    message: snapshot.error.toString(),
+                    action: FilledButton(
+                      onPressed: () => setState(_load),
+                      child: const Text('Retry'),
+                    ),
+                  );
+                }
                 final services = snapshot.data ?? [];
                 if (services.isEmpty) {
                   return const EmptyState(
@@ -115,6 +126,8 @@ class CustomerServiceDetailPage extends ConsumerStatefulWidget {
 
 class _CustomerServiceDetailPageState
     extends ConsumerState<CustomerServiceDetailPage> {
+  late Future<Map<String, dynamic>?> _serviceFuture;
+  late Future<List<Map<String, dynamic>>> _reviewsFuture;
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   String? _slot; // slot value sent to API
   String? _addressId;
@@ -125,6 +138,35 @@ class _CustomerServiceDetailPageState
   final _notes = TextEditingController();
   bool _loadingSlots = false;
   bool _bootstrapped = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _serviceFuture = _loadService();
+    _reviewsFuture = _loadReviews();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomerServiceDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) {
+      _bootstrapped = false;
+      _serviceFuture = _loadService();
+      _reviewsFuture = _loadReviews();
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadService() =>
+      ref.read(customerRepositoryProvider).service(widget.id);
+
+  Future<List<Map<String, dynamic>>> _loadReviews() =>
+      ref.read(customerRepositoryProvider).serviceReviews(widget.id);
+
+  void _retryService() => setState(() {
+        _bootstrapped = false;
+        _serviceFuture = _loadService();
+        _reviewsFuture = _loadReviews();
+      });
 
   @override
   void dispose() {
@@ -219,10 +261,22 @@ class _CustomerServiceDetailPageState
       title: 'Service Detail',
       showBack: true,
       child: FutureBuilder<Map<String, dynamic>?>(
-        future: ref.read(customerRepositoryProvider).service(widget.id),
+        future: _serviceFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'Service unavailable',
+              message: snapshot.error.toString(),
+              action: FilledButton.icon(
+                onPressed: _retryService,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+            );
           }
           final service = snapshot.data;
           if (service == null) {
@@ -291,8 +345,9 @@ class _CustomerServiceDetailPageState
                       DropdownButtonFormField<String>(
                         key: ValueKey(
                             'slot-${_slots.map((s) => s['value']).join('|')}'),
-                        initialValue:
-                            _slots.any((s) => s['value'] == _slot) ? _slot : null,
+                        initialValue: _slots.any((s) => s['value'] == _slot)
+                            ? _slot
+                            : null,
                         decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.schedule_rounded),
                             hintText: 'Time Slot'),
@@ -318,10 +373,9 @@ class _CustomerServiceDetailPageState
                       ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      key: ValueKey(
-                          'addr-${_addresses.length}-$_addressId'),
-                      initialValue: _addresses.any((a) =>
-                              a.s('id', a.s('addressId')) == _addressId)
+                      key: ValueKey('addr-${_addresses.length}-$_addressId'),
+                      initialValue: _addresses.any(
+                              (a) => a.s('id', a.s('addressId')) == _addressId)
                           ? _addressId
                           : null,
                       decoration: const InputDecoration(
@@ -390,8 +444,8 @@ class _CustomerServiceDetailPageState
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                          content: Text(
-                                              'Service booking created')));
+                                          content:
+                                              Text('Service booking created')));
                                   context.push('/app/bookings');
                                 }
                               } catch (e) {
@@ -409,10 +463,15 @@ class _CustomerServiceDetailPageState
               ),
               const SectionHeader(title: 'Reviews'),
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: ref
-                    .read(customerRepositoryProvider)
-                    .serviceReviews(widget.id),
+                future: _reviewsFuture,
                 builder: (context, reviews) {
+                  if (reviews.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (reviews.hasError) {
+                    return Text('Reviews unavailable: ',
+                        style: const TextStyle(color: AppColors.muted));
+                  }
                   final rows = reviews.data ?? [];
                   if (rows.isEmpty) {
                     return const Text('No reviews yet.',
@@ -495,6 +554,17 @@ class _CustomerClassifiedsPageState
                       height: 300,
                       child: Center(child: CircularProgressIndicator()));
                 }
+                if (snapshot.hasError) {
+                  return EmptyState(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load classifieds',
+                    message: snapshot.error.toString(),
+                    action: FilledButton(
+                      onPressed: () => setState(_load),
+                      child: const Text('Retry'),
+                    ),
+                  );
+                }
                 final ads = snapshot.data ?? [];
                 if (ads.isEmpty) {
                   return const EmptyState(
@@ -568,9 +638,8 @@ class CustomerClassifiedDetailPage extends ConsumerWidget {
                         .s('contactPhone', ad.s('phone', ad.s('mobile')))
                         .replaceAll(RegExp(r'[^\d+]'), '');
                     if (phone.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Seller phone not available')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Seller phone not available')));
                       return;
                     }
                     final digits = phone.replaceAll(RegExp(r'\D'), '');
@@ -734,8 +803,7 @@ class _CustomerPostAdPageState extends ConsumerState<CustomerPostAdPage> {
                   onPressed: () async {
                     if ((_categoryId ?? '').isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Select a category')));
+                          const SnackBar(content: Text('Select a category')));
                       return;
                     }
                     await ref

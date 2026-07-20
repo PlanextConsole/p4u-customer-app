@@ -974,8 +974,8 @@ class CustomerRepository {
                 'title': row.s('title'),
                 'caption': row.s('caption'),
                 'advertiser': row.s('advertiser'),
-                'image': resolveMediaUrl(row.s(
-                    'mobileImage', row.s('image', row.s('imageUrl')))),
+                'image': resolveMediaUrl(
+                    row.s('mobileImage', row.s('image', row.s('imageUrl')))),
                 'redirect_url': row.s('redirectUrl', row.s('redirect_url')),
               })
           .toList();
@@ -1972,9 +1972,13 @@ class CustomerRepository {
               'comment_count', row.i('commentsCount', row.i('commentCount')))),
       'liked': row['liked'] == true ||
           row['isLiked'] == true ||
+          row['is_liked'] == true ||
+          row['has_liked'] == true ||
           row['hasLiked'] == true,
       'saved': row['saved'] == true ||
           row['isSaved'] == true ||
+          row['is_saved'] == true ||
+          row['has_saved'] == true ||
           row['hasSaved'] == true,
     };
   }

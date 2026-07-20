@@ -20,11 +20,73 @@ import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import 'account_pages.dart';
 
-class SocialFeedPage extends ConsumerWidget {
+class SocialFeedPage extends ConsumerStatefulWidget {
   const SocialFeedPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SocialFeedPage> createState() => _SocialFeedPageState();
+}
+
+class _SocialFeedPageState extends ConsumerState<SocialFeedPage> {
+  static const _defaultAdConfig = <String, dynamic>{
+    'adEveryN': 5,
+    'mode': 'prefer_admin_then_admob',
+  };
+
+  late Future<List<Map<String, dynamic>>> _feedFuture;
+  List<Map<String, dynamic>> _ads = const [];
+  Map<String, dynamic> _adConfig = _defaultAdConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    _feedFuture = _loadFeed();
+    unawaited(_loadAdContent());
+  }
+
+  Future<List<Map<String, dynamic>>> _loadFeed() =>
+      ref.read(customerRepositoryProvider).socialFeed();
+
+  Future<List<Map<String, dynamic>>> _safeAds() async {
+    try {
+      return await ref
+          .read(customerRepositoryProvider)
+          .socialFeedAds()
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<Map<String, dynamic>> _safeAdConfig() async {
+    try {
+      return await ref
+          .read(customerRepositoryProvider)
+          .socialAdConfig()
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return _defaultAdConfig;
+    }
+  }
+
+  Future<void> _loadAdContent() async {
+    final values = await Future.wait<dynamic>([_safeAds(), _safeAdConfig()]);
+    if (!mounted) return;
+    setState(() {
+      _ads = values[0] as List<Map<String, dynamic>>;
+      _adConfig = values[1] as Map<String, dynamic>;
+    });
+  }
+
+  Future<void> _refreshFeed() async {
+    final next = _loadFeed();
+    setState(() => _feedFuture = next);
+    unawaited(_loadAdContent());
+    await next;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
     return CustomerScaffold(
@@ -41,31 +103,47 @@ class SocialFeedPage extends ConsumerWidget {
             onPressed: () => context.push('/app/social/messages'),
             icon: const Icon(Icons.send_rounded)),
       ],
-      child: FutureBuilder<List<dynamic>>(
-        future: Future.wait<dynamic>([
-          ref.read(customerRepositoryProvider).socialFeed(),
-          ref.read(customerRepositoryProvider).socialFeedAds(),
-          ref.read(customerRepositoryProvider).socialAdConfig(),
-        ]),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _feedFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final posts = snapshot.data?.isNotEmpty == true
-              ? snapshot.data![0]
-              : const <Map<String, dynamic>>[];
-          final ads = (snapshot.data?.length ?? 0) > 1
-              ? snapshot.data![1] as List<Map<String, dynamic>>
-              : const <Map<String, dynamic>>[];
-          final config = (snapshot.data?.length ?? 0) > 2
-              ? snapshot.data![2] as Map<String, dynamic>
-              : const {'adEveryN': 5, 'mode': 'prefer_admin_then_admob'};
+          if (snapshot.hasError) {
+            return RefreshIndicator(
+              onRefresh: _refreshFeed,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(24),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * .55,
+                    child: EmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Could not load Socio',
+                      message: snapshot.error.toString(),
+                      action: FilledButton(
+                        onPressed: _refreshFeed,
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          final posts = snapshot.data ?? const <Map<String, dynamic>>[];
+          final ads = _ads;
+          final config = _adConfig;
           final adEveryN = (config['adEveryN'] as int? ?? 5).clamp(1, 100);
           final feedChildren = <Widget>[];
           for (var i = 0; i < posts.length; i++) {
             feedChildren.add(Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: SocialPostCard(post: posts[i])));
+                child: SocialPostCard(
+                  key: ValueKey(posts[i]['id']),
+                  post: posts[i],
+                )));
             if ((i + 1) % adEveryN == 0) {
               feedChildren.add(Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -77,8 +155,9 @@ class SocialFeedPage extends ConsumerWidget {
             }
           }
           return RefreshIndicator(
-            onRefresh: () async {},
+            onRefresh: _refreshFeed,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
                 _SocialStoryRail(ads: ads, config: config),
@@ -114,6 +193,12 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
   late bool _saved;
   late bool _following;
   late int _likes;
+  late int _comments;
+  late int _shares;
+  bool _likeBusy = false;
+  bool _saveBusy = false;
+  bool _followBusy = false;
+  bool _shareBusy = false;
 
   @override
   void initState() {
@@ -123,6 +208,25 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
     _saved = post['saved'] == true;
     _following = post['is_following'] == true;
     _likes = post.i('likes_count', post.i('like_count'));
+    _comments = post.i('comments_count', post.i('comment_count'));
+    _shares = post.i('shares_count', post.i('share_count'));
+  }
+
+  @override
+  void didUpdateWidget(covariant SocialPostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_likeBusy) return;
+    final oldId = oldWidget.post.s('id');
+    final newId = widget.post.s('id');
+    if (oldId != newId || oldWidget.post != widget.post) {
+      _liked = widget.post['liked'] == true;
+      _likes = widget.post.i('likes_count', widget.post.i('like_count'));
+      _saved = widget.post['saved'] == true;
+      _following = widget.post['is_following'] == true;
+      _comments =
+          widget.post.i('comments_count', widget.post.i('comment_count'));
+      _shares = widget.post.i('shares_count', widget.post.i('share_count'));
+    }
   }
 
   @override
@@ -186,7 +290,9 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
               children: [
                 if (!isSelf)
                   TextButton(
-                    onPressed: () => _toggleFollow(post.s('user_id')),
+                    onPressed: _followBusy
+                        ? null
+                        : () => _toggleFollow(post.s('user_id')),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       minimumSize: const Size(0, 0),
@@ -280,7 +386,7 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
                 Row(
                   children: [
                     IconButton(
-                        onPressed: () => _toggleLike(postId),
+                        onPressed: _likeBusy ? null : () => _toggleLike(postId),
                         icon: Icon(
                           _liked
                               ? Icons.favorite_rounded
@@ -289,20 +395,17 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
                         )),
                     if (!hideLikeCount) Text('$_likes'),
                     IconButton(
-                        onPressed: canComment
-                            ? () => context.push('/app/social/comments/$postId')
-                            : null,
+                        onPressed:
+                            canComment ? () => _openComments(postId) : null,
                         icon: const Icon(Icons.mode_comment_outlined)),
-                    Text(
-                        '${post.i('comments_count', post.i('comment_count'))}'),
+                    Text('$_comments'),
                     IconButton(
-                        onPressed: () => _share(postId),
+                        onPressed: _shareBusy ? null : () => _share(postId),
                         icon: const Icon(Icons.share_outlined)),
-                    if (post.i('shares_count') > 0)
-                      Text('${post.i('shares_count')}'),
+                    if (_shares > 0) Text('$_shares'),
                     const Spacer(),
                     IconButton(
-                        onPressed: () => _toggleSave(postId),
+                        onPressed: _saveBusy ? null : () => _toggleSave(postId),
                         icon: Icon(_saved
                             ? Icons.bookmark_rounded
                             : Icons.bookmark_border_rounded)),
@@ -317,29 +420,45 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
   }
 
   Future<void> _toggleFollow(String userId) async {
-    if (userId.isEmpty) return;
+    if (userId.isEmpty || _followBusy) return;
     final repo = ref.read(customerRepositoryProvider);
     final was = _following;
-    setState(() => _following = !was);
+    setState(() {
+      _followBusy = true;
+      _following = !was;
+      widget.post['is_following'] = !was;
+    });
     try {
       if (was) {
         await repo.unfollowSocialUser(userId);
       } else {
         await repo.followSocialUser(userId);
       }
-    } catch (_) {
-      if (mounted) setState(() => _following = was);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _following = was;
+          widget.post['is_following'] = was;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update follow: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _followBusy = false);
     }
   }
 
   Future<void> _toggleLike(String postId) async {
-    if (postId.isEmpty) return;
+    if (postId.isEmpty || _likeBusy) return;
     final repo = ref.read(customerRepositoryProvider);
     final wasLiked = _liked;
     setState(() {
+      _likeBusy = true;
       _liked = !wasLiked;
       _likes += wasLiked ? -1 : 1;
       if (_likes < 0) _likes = 0;
+      widget.post['liked'] = _liked;
+      widget.post['likes_count'] = _likes;
     });
     try {
       if (wasLiked) {
@@ -347,35 +466,58 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
       } else {
         await repo.likeSocialPost(postId);
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _liked = wasLiked;
         _likes += wasLiked ? 1 : -1;
         if (_likes < 0) _likes = 0;
+        widget.post['liked'] = _liked;
+        widget.post['likes_count'] = _likes;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update like: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
     }
   }
 
   Future<void> _toggleSave(String postId) async {
-    if (postId.isEmpty) return;
+    if (postId.isEmpty || _saveBusy) return;
     final repo = ref.read(customerRepositoryProvider);
     final wasSaved = _saved;
-    setState(() => _saved = !wasSaved);
+    setState(() {
+      _saveBusy = true;
+      _saved = !wasSaved;
+      widget.post['saved'] = _saved;
+    });
     try {
       if (wasSaved) {
         await repo.unsaveSocialPost(postId);
       } else {
         await repo.saveSocialPost(postId);
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _saved = wasSaved);
+      setState(() {
+        _saved = wasSaved;
+        widget.post['saved'] = wasSaved;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update saved post: $error')));
+    } finally {
+      if (mounted) setState(() => _saveBusy = false);
     }
   }
 
   Future<void> _share(String postId) async {
-    if (postId.isEmpty) return;
+    if (postId.isEmpty || _shareBusy) return;
+    setState(() {
+      _shareBusy = true;
+      _shares += 1;
+      widget.post['shares_count'] = _shares;
+    });
     try {
       await ref.read(customerRepositoryProvider).shareSocialPost(postId);
       if (mounted) {
@@ -384,9 +526,34 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _shares = (_shares - 1).clamp(0, 1 << 31);
+          widget.post['shares_count'] = _shares;
+        });
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$e')));
       }
+    } finally {
+      if (mounted) setState(() => _shareBusy = false);
+    }
+  }
+
+  Future<void> _openComments(String postId) async {
+    if (postId.isEmpty) return;
+    await context.push('/app/social/comments/$postId');
+    if (!mounted) return;
+    try {
+      final refreshed =
+          await ref.read(customerRepositoryProvider).socialPost(postId);
+      if (!mounted || refreshed == null) return;
+      setState(() {
+        _comments = refreshed.i(
+            'comments_count', refreshed.i('comment_count', _comments));
+        widget.post['comments_count'] = _comments;
+      });
+    } catch (_) {
+      // The comments themselves were already saved; a count refresh can wait
+      // for the next pull-to-refresh when the network is unavailable.
     }
   }
 }
@@ -470,11 +637,7 @@ class SponsoredAdCard extends StatelessWidget {
           child: Row(
             children: [
               if (image.isNotEmpty)
-                RemoteImage(
-                    url: image,
-                    height: 88,
-                    width: 92,
-                    borderRadius: 0),
+                RemoteImage(url: image, height: 88, width: 92, borderRadius: 0),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(10),
@@ -975,6 +1138,16 @@ class _SocialExplorePageState extends ConsumerState<SocialExplorePage> {
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _future,
             builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return EmptyState(
+                  icon: Icons.cloud_off_rounded,
+                  title: 'Search unavailable',
+                  message: snapshot.error.toString(),
+                );
+              }
               final rows = snapshot.data ?? [];
               if (rows.isEmpty) {
                 return const EmptyState(
@@ -991,7 +1164,7 @@ class _SocialExplorePageState extends ConsumerState<SocialExplorePage> {
                                 final id = u.s('user_id',
                                     u.s('userId', u.s('id', u.s('authorId'))));
                                 if (id.isEmpty) return;
-                                context.go('/app/social/profile/$id');
+                                context.push('/app/social/profile/$id');
                               },
                               child: _ProfileRow(profile: u))))
                       .toList());
@@ -1031,6 +1204,11 @@ class SocialProfilePage extends ConsumerWidget {
                 'username': username ?? auth.name,
                 'display_name': auth.name
               };
+          final displayName = profile
+              .s('display_name',
+                  profile.s('userName', profile.s('name', auth.name)))
+              .trim();
+          final safeDisplayName = displayName.isEmpty ? 'User' : displayName;
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -1041,24 +1219,13 @@ class SocialProfilePage extends ConsumerWidget {
                         radius: 42,
                         backgroundColor: AppColors.accent,
                         child: Text(
-                            profile
-                                .s(
-                                    'display_name',
-                                    profile.s('userName',
-                                        profile.s('name', auth.name)))
-                                .characters
-                                .first
-                                .toUpperCase(),
+                            safeDisplayName.characters.first.toUpperCase(),
                             style: const TextStyle(
                                 fontSize: 30,
                                 color: AppColors.primary,
                                 fontWeight: FontWeight.w900))),
                     const SizedBox(height: 10),
-                    Text(
-                        profile.s(
-                            'display_name',
-                            profile.s(
-                                'userName', profile.s('name', auth.name))),
+                    Text(safeDisplayName,
                         style: const TextStyle(
                             fontWeight: FontWeight.w900, fontSize: 20)),
                     Text(
@@ -1222,6 +1389,22 @@ class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                if (snapshot.hasError) {
+                  return EmptyState(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Comments unavailable',
+                    message: snapshot.error.toString(),
+                    action: FilledButton.icon(
+                      onPressed: () => setState(() {
+                        _future = ref
+                            .read(customerRepositoryProvider)
+                            .socialComments(widget.postId);
+                      }),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  );
+                }
                 if (rows.isEmpty) {
                   return const EmptyState(
                       icon: Icons.mode_comment_rounded,
@@ -1319,6 +1502,11 @@ class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
         _future =
             ref.read(customerRepositoryProvider).socialComments(widget.postId);
       });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not add comment: $error')));
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -1651,38 +1839,129 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
   late bool _liked = widget.post['liked'] == true;
   late bool _saved = widget.post['saved'] == true;
   late int _likes = widget.post.i('likes_count', widget.post.i('like_count'));
+  late int _comments =
+      widget.post.i('comments_count', widget.post.i('comment_count'));
+  late int _shares =
+      widget.post.i('shares_count', widget.post.i('share_count'));
+  bool _likeBusy = false;
+  bool _saveBusy = false;
+  bool _shareBusy = false;
+
+  @override
+  void didUpdateWidget(covariant _ReelActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_likeBusy) return;
+    _liked = widget.post['liked'] == true;
+    _saved = widget.post['saved'] == true;
+    _likes = widget.post.i('likes_count', widget.post.i('like_count'));
+    _comments = widget.post.i('comments_count', widget.post.i('comment_count'));
+    _shares = widget.post.i('shares_count', widget.post.i('share_count'));
+  }
 
   Future<void> _like() async {
+    if (_likeBusy) return;
     final repo = ref.read(customerRepositoryProvider);
     final id = widget.post.s('id');
+    if (id.isEmpty) return;
     final was = _liked;
     setState(() {
+      _likeBusy = true;
       _liked = !was;
       _likes += was ? -1 : 1;
       if (_likes < 0) _likes = 0;
+      widget.post['liked'] = _liked;
+      widget.post['likes_count'] = _likes;
     });
     try {
       was ? await repo.unlikeSocialPost(id) : await repo.likeSocialPost(id);
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() {
           _liked = was;
           _likes += was ? 1 : -1;
+          widget.post['liked'] = _liked;
+          widget.post['likes_count'] = _likes;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update like: $error')),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
     }
   }
 
   Future<void> _save() async {
+    if (_saveBusy) return;
     final repo = ref.read(customerRepositoryProvider);
     final id = widget.post.s('id');
+    if (id.isEmpty) return;
     final was = _saved;
-    setState(() => _saved = !was);
+    setState(() {
+      _saveBusy = true;
+      _saved = !was;
+      widget.post['saved'] = _saved;
+    });
     try {
       was ? await repo.unsaveSocialPost(id) : await repo.saveSocialPost(id);
-    } catch (_) {
-      if (mounted) setState(() => _saved = was);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saved = was;
+          widget.post['saved'] = was;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update saved post: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _saveBusy = false);
     }
+  }
+
+  Future<void> _share() async {
+    if (_shareBusy) return;
+    final id = widget.post.s('id');
+    if (id.isEmpty) return;
+    setState(() {
+      _shareBusy = true;
+      _shares += 1;
+      widget.post['shares_count'] = _shares;
+    });
+    try {
+      await ref.read(customerRepositoryProvider).shareSocialPost(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Post shared')));
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _shares = _shares > 0 ? _shares - 1 : 0;
+          widget.post['shares_count'] = _shares;
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not share: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _shareBusy = false);
+    }
+  }
+
+  Future<void> _openComments() async {
+    final id = widget.post.s('id');
+    if (id.isEmpty) return;
+    await context.push('/app/social/comments/$id');
+    if (!mounted) return;
+    try {
+      final refreshed =
+          await ref.read(customerRepositoryProvider).socialPost(id);
+      if (!mounted || refreshed == null) return;
+      setState(() {
+        _comments = refreshed.i(
+            'comments_count', refreshed.i('comment_count', _comments));
+        widget.post['comments_count'] = _comments;
+      });
+    } catch (_) {}
   }
 
   Widget _btn(IconData icon, String label, VoidCallback onTap, {Color? color}) {
@@ -1702,25 +1981,14 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
 
   @override
   Widget build(BuildContext context) {
-    final id = widget.post.s('id');
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         _btn(_liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             '$_likes', _like,
             color: _liked ? Colors.red : Colors.white),
-        _btn(
-            Icons.mode_comment_outlined,
-            '${widget.post.i('comments_count', widget.post.i('comment_count'))}',
-            () => context.push('/app/social/comments/$id')),
-        _btn(Icons.share_outlined, '', () async {
-          final messenger = ScaffoldMessenger.of(context);
-          try {
-            await ref.read(customerRepositoryProvider).shareSocialPost(id);
-            messenger
-                .showSnackBar(const SnackBar(content: Text('Post shared')));
-          } catch (_) {}
-        }),
+        _btn(Icons.mode_comment_outlined, '$_comments', _openComments),
+        _btn(Icons.share_outlined, _shares > 0 ? '$_shares' : '', _share),
         _btn(_saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
             '', _save),
       ],
@@ -2375,6 +2643,16 @@ class _ProfileFollowButtonState extends ConsumerState<_ProfileFollowButton> {
   late bool _following = widget.initialFollowing;
   bool _busy = false;
 
+  @override
+  void didUpdateWidget(covariant _ProfileFollowButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_busy &&
+        (oldWidget.userId != widget.userId ||
+            oldWidget.initialFollowing != widget.initialFollowing)) {
+      _following = widget.initialFollowing;
+    }
+  }
+
   Future<void> _toggle() async {
     if (widget.userId.isEmpty || _busy) return;
     final repo = ref.read(customerRepositoryProvider);
@@ -2389,8 +2667,12 @@ class _ProfileFollowButtonState extends ConsumerState<_ProfileFollowButton> {
       } else {
         await repo.followSocialUser(widget.userId);
       }
-    } catch (_) {
-      if (mounted) setState(() => _following = was);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _following = was);
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update follow: $error')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2936,12 +3218,12 @@ class _SocialQuickNav extends StatelessWidget {
   }
 }
 
-class _ProfileRow extends ConsumerWidget {
+class _ProfileRow extends StatelessWidget {
   const _ProfileRow({required this.profile});
   final Map<String, dynamic> profile;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final userId = profile.s('user_id', profile.s('userId', profile.s('id')));
     final following = profile['isFollowing'] == true ||
         profile['following'] == true ||
@@ -2961,23 +3243,8 @@ class _ProfileRow extends ConsumerWidget {
                 style: const TextStyle(color: AppColors.muted)),
           ]),
         ),
-        OutlinedButton(
-          onPressed: userId.isEmpty
-              ? null
-              : () async {
-                  final repo = ref.read(customerRepositoryProvider);
-                  if (following) {
-                    await repo.unfollowSocialUser(userId);
-                  } else {
-                    await repo.followSocialUser(userId);
-                  }
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(following ? 'Unfollowed' : 'Following')));
-                  }
-                },
-          child: Text(following ? 'Following' : 'Follow'),
-        ),
+        if (userId.isNotEmpty)
+          _ProfileFollowButton(userId: userId, initialFollowing: following),
       ],
     );
   }
