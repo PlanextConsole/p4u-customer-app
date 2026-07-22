@@ -88,6 +88,23 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                           _load();
                         })),
                 ActionChip(
+                    label: const Text('Save search'),
+                    onPressed: () async {
+                      await ref
+                          .read(customerRepositoryProvider)
+                          .savePropertySearch({
+                        'name': _search.text.trim().isEmpty
+                            ? 'Property search'
+                            : _search.text.trim(),
+                        'query': {'q': _search.text.trim(), 'type': _type},
+                        'notify': true
+                      });
+                      if (mounted) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                            const SnackBar(content: Text('Search saved')));
+                      }
+                    }),
+                ActionChip(
                     label: const Text('EMI'),
                     onPressed: () => context.push('/app/find-home/emi')),
                 ActionChip(
@@ -177,7 +194,37 @@ class PropertyDetailPage extends ConsumerWidget {
               Text(property.s('description')),
               const SizedBox(height: 14),
               FilledButton.icon(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final controller = TextEditingController(
+                        text: 'I am interested in this property');
+                    final message = await showDialog<String>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                                title: const Text('Contact owner'),
+                                content: TextField(
+                                    controller: controller,
+                                    minLines: 2,
+                                    maxLines: 4),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancel')),
+                                  FilledButton(
+                                      onPressed: () => Navigator.pop(
+                                          context, controller.text.trim()),
+                                      child: const Text('Send'))
+                                ]));
+                    controller.dispose();
+                    if (message != null && message.isNotEmpty) {
+                      await ref
+                          .read(customerRepositoryProvider)
+                          .inquireProperty(id, message);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Inquiry sent')));
+                      }
+                    }
+                  },
                   icon: const Icon(Icons.message_rounded),
                   label: const Text('Contact Owner')),
             ],
@@ -385,11 +432,9 @@ class MyPropertiesPage extends ConsumerWidget {
       title: 'My Properties',
       showBack: true,
       child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).properties(),
+        future: ref.read(customerRepositoryProvider).myProperties(),
         builder: (context, snapshot) {
-          final rows = (snapshot.data ?? [])
-              .where((p) => p.s('user_id') == auth.id)
-              .toList();
+          final rows = snapshot.data ?? [];
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }

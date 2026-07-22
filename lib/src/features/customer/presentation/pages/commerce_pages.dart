@@ -20,21 +20,41 @@ class CustomerLandingPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final authState = ref.watch(customerAuthStateProvider);
+    final auth = authState.valueOrNull;
+    if (authState.isLoading) return const _LandingSessionLoader();
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset('assets/images/splash-customer-1.jpg', fit: BoxFit.cover),
-          Container(color: AppColors.primary.withValues(alpha: .78)),
-          DecoratedBox(
+          Image.asset(
+            'assets/images/welcome-bg.png',
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+          ),
+          const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
+                  Color(0xDB089B96),
+                  Color(0xA1089B96),
+                  Color(0x38089B96),
+                  Color(0xB8ECFAF7),
+                  Color(0xEBECFAF7),
+                ],
+                stops: [0, .25, .43, .58, 1],
+              ),
+            ),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0x29006F6B),
                   Colors.transparent,
-                  AppColors.accent.withValues(alpha: .96)
+                  Color(0x1F006F6B),
                 ],
               ),
             ),
@@ -44,37 +64,41 @@ class CustomerLandingPage extends ConsumerWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 34, 18, 24),
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 20),
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const _LandingLogo(),
-                        _LandingAccountButton(authName: auth?.name),
+                        _LandingAccountButton(
+                          authName: auth?.name,
+                          customerId: auth?.id,
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 10),
                     const Text(
                       'Welcome!',
                       style: TextStyle(
-                        color: AppColors.brandDark,
-                        fontSize: 34,
+                        color: Colors.white,
+                        fontSize: 22,
+                        height: 1,
                         fontWeight: FontWeight.w900,
-                        shadows: [Shadow(color: Colors.black26, blurRadius: 8)],
+                        shadows: [Shadow(color: Colors.black26, blurRadius: 5)],
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     const Text(
                       'Everything you need, in one place.',
                       style: TextStyle(
-                        color: AppColors.brandDark,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                         shadows: [Shadow(color: Colors.black26, blurRadius: 6)],
                       ),
                     ),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 21),
                     Stack(
                       alignment: Alignment.center,
                       children: [
@@ -82,53 +106,60 @@ class CustomerLandingPage extends ConsumerWidget {
                           crossAxisCount: 2,
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          childAspectRatio: .72,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 16,
+                          childAspectRatio: 1,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
                           children: const [
                             _LandingCard(
-                                title: 'Shop',
-                                body: 'Find everything you need',
-                                icon: Icons.shopping_bag_outlined,
-                                route: '/app/browse'),
+                              title: 'Shop',
+                              body: 'Find everything you need',
+                              icon: Icons.shopping_bag_outlined,
+                              route: '/app/browse',
+                            ),
                             _LandingCard(
-                                title: 'Socio',
-                                body: 'Connect with your community',
-                                icon: Icons.groups_2_outlined,
-                                route: '/app/social'),
+                              title: 'Socio',
+                              body: 'Connect with your community',
+                              icon: Icons.people_outline_rounded,
+                              route: '/app/social',
+                            ),
                             _LandingCard(
-                                title: 'Services',
-                                body: 'Book trusted services',
-                                icon: Icons.business_center_outlined,
-                                route: '/app/services'),
+                              title: 'Services',
+                              body: 'Book trusted services',
+                              icon: Icons.business_center_outlined,
+                              route: '/app/services',
+                            ),
                             _LandingCard(
-                                title: 'Classifieds',
-                                body: 'Buy, sell & discover near you',
-                                icon: Icons.sell_outlined,
-                                route: '/app/classifieds'),
+                              title: 'Classifieds',
+                              body: 'Buy, sell & discover near you',
+                              icon: Icons.sell_outlined,
+                              route: '/app/classifieds',
+                            ),
                           ],
                         ),
                         const _LandingHomeButton(),
                       ],
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 12),
                     _LandingWallet(authenticated: auth != null),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 8),
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _LandingQuickLink(
-                            label: 'Emergency',
-                            icon: Icons.emergency_share_outlined,
-                            route: '/app/services?search=emergency'),
+                          label: 'Emergency',
+                          icon: Icons.emergency_outlined,
+                          route: '/app/emergency',
+                        ),
                         _LandingQuickLink(
-                            label: 'Help',
-                            icon: Icons.support_agent_outlined,
-                            route: '/app/services?search=help'),
+                          label: 'Help',
+                          icon: Icons.support_outlined,
+                          route: '/app/support',
+                        ),
                         _LandingQuickLink(
-                            label: 'Quick Assist',
-                            icon: Icons.bolt_outlined,
-                            route: '/app/services?search=quick assist'),
+                          label: 'Quick Assist',
+                          icon: Icons.electric_bolt_outlined,
+                          route: '/app/quick-assist',
+                        ),
                       ],
                     ),
                   ],
@@ -142,75 +173,124 @@ class CustomerLandingPage extends ConsumerWidget {
   }
 }
 
+class _LandingSessionLoader extends StatelessWidget {
+  const _LandingSessionLoader();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset('assets/images/welcome-bg.png',
+                fit: BoxFit.cover, alignment: Alignment.topCenter),
+            Container(color: const Color(0xDB089B96)),
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
+          ],
+        ),
+      );
+}
+
 class _LandingLogo extends StatelessWidget {
   const _LandingLogo();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 72,
-      height: 72,
-      padding: const EdgeInsets.all(6),
+      width: 44,
+      height: 44,
+      padding: EdgeInsets.zero,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.primary, width: 1.2),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 18, offset: Offset(0, 8))
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
         ],
       ),
-      child: Image.asset('assets/images/p4u-logo.png', fit: BoxFit.contain),
+      child:
+          Image.asset('assets/images/p4u-welcome-logo.png', fit: BoxFit.cover),
     );
   }
 }
 
-class _LandingAccountButton extends StatelessWidget {
-  const _LandingAccountButton({this.authName});
+class _LandingAccountButton extends ConsumerWidget {
+  const _LandingAccountButton({this.authName, this.customerId});
   final String? authName;
+  final String? customerId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final loggedIn = authName != null;
+    final fallback = loggedIn
+        ? Text(
+            authName!.trim().isEmpty
+                ? 'U'
+                : authName!.trim().characters.first.toUpperCase(),
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          )
+        : const Icon(
+            Icons.person_outline_rounded,
+            color: AppColors.primary,
+            size: 24,
+          );
     return InkWell(
       onTap: () => context.push(loggedIn ? '/app/profile' : '/app/login'),
       customBorder: const CircleBorder(),
       child: Container(
-        width: 72,
-        height: 72,
+        width: 44,
+        height: 44,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
+          border: Border.all(color: Colors.white, width: 2),
           boxShadow: const [
             BoxShadow(
-                color: Colors.black26, blurRadius: 18, offset: Offset(0, 8))
+              color: Colors.black26,
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
           ],
         ),
-        child: Center(
-          child: loggedIn
-              ? Text(
-                  authName!.trim().isEmpty
-                      ? 'U'
-                      : authName!.trim().characters.first.toUpperCase(),
-                  style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 22),
-                )
-              : const Icon(Icons.person_outline_rounded,
-                  color: AppColors.primary, size: 34),
-        ),
+        child: !loggedIn || customerId == null
+            ? Center(child: fallback)
+            : FutureBuilder<Map<String, dynamic>>(
+                future: ref
+                    .read(customerRepositoryProvider)
+                    .profileWithStats(customerId!),
+                builder: (context, snapshot) {
+                  final profile = snapshot.data ?? const <String, dynamic>{};
+                  final rawMeta = profile['metadata'];
+                  final meta = rawMeta is Map
+                      ? Map<String, dynamic>.from(rawMeta)
+                      : const <String, dynamic>{};
+                  final avatar = (meta['avatarUrl'] ??
+                          meta['avatar'] ??
+                          profile.s('avatarUrl', profile.s('avatar')))
+                      .toString();
+                  if (avatar.isEmpty) return Center(child: fallback);
+                  return RemoteImage(url: avatar, width: 44, height: 44);
+                },
+              ),
       ),
     );
   }
 }
 
 class _LandingCard extends StatelessWidget {
-  const _LandingCard(
-      {required this.title,
-      required this.body,
-      required this.icon,
-      required this.route});
+  const _LandingCard({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.route,
+  });
 
   final String title;
   final String body;
@@ -220,52 +300,73 @@ class _LandingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(28),
+      key: ValueKey<String>('landing:$route'),
+      borderRadius: BorderRadius.circular(20),
       onTap: () => context.push(route),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .94),
-          borderRadius: BorderRadius.circular(28),
-          border:
-              Border.all(color: Colors.white.withValues(alpha: .9), width: 1.8),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: .20),
+              const Color(0xFFFAF7E5).withValues(alpha: .60),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: .80),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withValues(alpha: .08),
-                blurRadius: 18,
-                offset: const Offset(0, 8))
+              color: Colors.black.withValues(alpha: .06),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
           ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 62,
-              height: 62,
+              width: 50,
+              height: 50,
               decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2)),
-              child: Icon(icon, color: AppColors.primary, size: 30),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Icon(icon, color: Colors.white, size: 25),
             ),
-            const SizedBox(height: 12),
-            Text(title,
-                maxLines: 1,
+            const SizedBox(height: 6),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.brandDark,
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 105,
+              height: 22,
+              child: Text(
+                body,
+                textAlign: TextAlign.center,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.brandDark)),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 38,
-              child: Text(body,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14, height: 1.12, color: AppColors.brandDark)),
+                  fontSize: 11,
+                  height: 1.05,
+                  color: AppColors.brandDark,
+                ),
+              ),
             ),
-            const Spacer(),
+            const SizedBox(height: 7),
             const _LandingArrow(),
           ],
         ),
@@ -280,37 +381,45 @@ class _LandingHomeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      key: const ValueKey<String>('landing:/app/home'),
       onTap: () => context.push('/app/home'),
       customBorder: const CircleBorder(),
       child: Container(
-        width: 104,
-        height: 104,
+        width: 76,
+        height: 76,
         decoration: BoxDecoration(
           color: AppColors.primary,
           shape: BoxShape.circle,
-          border:
-              Border.all(color: Colors.white.withValues(alpha: .72), width: 8),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: .72),
+            width: 6,
+          ),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withValues(alpha: .22),
-                blurRadius: 22,
-                offset: const Offset(0, 10)),
+              color: Colors.black.withValues(alpha: .22),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
             BoxShadow(
-                color: Colors.white.withValues(alpha: .6),
-                blurRadius: 0,
-                spreadRadius: 2),
+              color: Colors.white.withValues(alpha: .6),
+              blurRadius: 0,
+              spreadRadius: 2,
+            ),
           ],
         ),
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.home_outlined, color: Colors.white, size: 34),
+            Icon(Icons.home_outlined, color: Colors.white, size: 27),
             SizedBox(height: 2),
-            Text('Home',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 15)),
+            Text(
+              'Home',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
@@ -326,48 +435,66 @@ class _LandingWallet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final balance = authenticated ? ref.watch(landingWalletProvider) : null;
     return InkWell(
-      borderRadius: BorderRadius.circular(26),
+      key: const ValueKey<String>('landing:/app/wallet'),
+      borderRadius: BorderRadius.circular(22),
       onTap: () => context.push(authenticated ? '/app/wallet' : '/app/login'),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 112),
-        padding: const EdgeInsets.all(18),
+        constraints: const BoxConstraints(minHeight: 84),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .42),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.white, width: 1.8),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: .20),
+              const Color(0xFFFAF7E5).withValues(alpha: .60),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white, width: 1.5),
         ),
         child: Row(
           children: [
             Container(
-              width: 70,
-              height: 70,
+              width: 48,
+              height: 48,
               decoration: const BoxDecoration(
-                  color: AppColors.primary, shape: BoxShape.circle),
-              child: const Icon(Icons.account_balance_wallet_outlined,
-                  color: Colors.white, size: 34),
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('Wallet',
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.brandDark)),
-                  const SizedBox(height: 7),
+                  const Text(
+                    'Wallet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.brandDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
-                      authenticated
-                          ? 'Secure payments made easy'
-                          : 'Login to view balance',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 15,
-                          height: 1.15,
-                          color: AppColors.brandDark)),
+                    authenticated
+                        ? 'Secure payments made easy'
+                        : 'Login to view balance',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.15,
+                      color: AppColors.brandDark,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -376,28 +503,32 @@ class _LandingWallet extends ConsumerWidget {
               children: [
                 if (authenticated)
                   Container(
-                    constraints: const BoxConstraints(minWidth: 62),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    constraints: const BoxConstraints(minWidth: 54),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .24),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: Colors.white70)),
+                      color: Colors.white.withValues(alpha: .24),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.white70),
+                    ),
                     child: Text(
                       balance?.maybeWhen(
                             data: (row) =>
-                                '₹${row.n('displayAmount', row.n('balance')).round()}',
+                                '\u20B9${row.n('displayAmount', row.n('balance')).round()}',
                             loading: () => '...',
-                            orElse: () => '₹0',
+                            orElse: () => '\u20B90',
                           ) ??
                           '',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w900),
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 4),
                 const _LandingArrow(),
               ],
             ),
@@ -409,8 +540,11 @@ class _LandingWallet extends ConsumerWidget {
 }
 
 class _LandingQuickLink extends StatelessWidget {
-  const _LandingQuickLink(
-      {required this.label, required this.icon, required this.route});
+  const _LandingQuickLink({
+    required this.label,
+    required this.icon,
+    required this.route,
+  });
   final String label;
   final IconData icon;
   final String route;
@@ -418,6 +552,7 @@ class _LandingQuickLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      key: ValueKey<String>('landing:$route'),
       borderRadius: BorderRadius.circular(50),
       onTap: () => context.push(route),
       child: SizedBox(
@@ -425,31 +560,37 @@ class _LandingQuickLink extends StatelessWidget {
         child: Column(
           children: [
             Container(
-              width: 74,
-              height: 74,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 color: AppColors.primary,
                 shape: BoxShape.circle,
                 border: Border.all(
-                    color: Colors.white.withValues(alpha: .58), width: 5),
+                  color: Colors.white.withValues(alpha: .58),
+                  width: 3,
+                ),
                 boxShadow: const [
                   BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 16,
-                      offset: Offset(0, 7))
+                    color: Colors.black26,
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
                 ],
               ),
-              child: Icon(icon, color: Colors.white, size: 30),
+              child: Icon(icon, color: Colors.white, size: 24),
             ),
-            const SizedBox(height: 8),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.brandDark,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13)),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.brandDark,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
@@ -463,14 +604,18 @@ class _LandingArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 32,
-      height: 32,
+      width: 22,
+      height: 22,
       decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: .20),
-          border: Border.all(color: Colors.white70)),
-      child: const Icon(Icons.arrow_forward_rounded,
-          color: AppColors.primary, size: 21),
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: .20),
+        border: Border.all(color: Colors.white70),
+      ),
+      child: const Icon(
+        Icons.arrow_forward_rounded,
+        color: AppColors.primary,
+        size: 16,
+      ),
     );
   }
 }
@@ -489,9 +634,10 @@ class CustomerHomePage extends ConsumerWidget {
       child: home.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(
-            icon: Icons.cloud_off_rounded,
-            title: 'Home unavailable',
-            message: e.toString()),
+          icon: Icons.cloud_off_rounded,
+          title: 'Home unavailable',
+          message: e.toString(),
+        ),
         data: (data) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(homeProvider),
           child: ListView(
@@ -501,8 +647,9 @@ class CustomerHomePage extends ConsumerWidget {
               const SizedBox(height: 12),
               _HeroBanners(data: data),
               const SectionHeader(
-                  title: 'Shop by service',
-                  subtitle: 'Everything you need, delivered simply'),
+                title: 'Shop by service',
+                subtitle: 'Everything you need, delivered simply',
+              ),
               GridView.count(
                 crossAxisCount: 3,
                 childAspectRatio: 1.0,
@@ -511,16 +658,36 @@ class CustomerHomePage extends ConsumerWidget {
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
                 children: const [
-                  _HomeAction('Shop', Icons.shopping_bag_rounded, '/app/browse',
-                      AppColors.primary),
-                  _HomeAction('Services', Icons.home_repair_service_rounded,
-                      '/app/services', AppColors.warning),
-                  _HomeAction('Socio', Icons.groups_rounded, '/app/social',
-                      AppColors.info),
-                  _HomeAction('Classifieds', Icons.campaign_rounded,
-                      '/app/classifieds', AppColors.primaryDark),
-                  _HomeAction('Wallet', Icons.account_balance_wallet_rounded,
-                      '/app/wallet', AppColors.brandDark),
+                  _HomeAction(
+                    'Shop',
+                    Icons.shopping_bag_rounded,
+                    '/app/browse',
+                    AppColors.primary,
+                  ),
+                  _HomeAction(
+                    'Services',
+                    Icons.home_repair_service_rounded,
+                    '/app/services',
+                    AppColors.warning,
+                  ),
+                  _HomeAction(
+                    'Socio',
+                    Icons.groups_rounded,
+                    '/app/social',
+                    AppColors.info,
+                  ),
+                  _HomeAction(
+                    'Classifieds',
+                    Icons.campaign_rounded,
+                    '/app/classifieds',
+                    AppColors.primaryDark,
+                  ),
+                  _HomeAction(
+                    'Wallet',
+                    Icons.account_balance_wallet_rounded,
+                    '/app/wallet',
+                    AppColors.brandDark,
+                  ),
                 ],
               ),
               const SectionHeader(title: 'Shop by Category'),
@@ -531,7 +698,8 @@ class CustomerHomePage extends ConsumerWidget {
                         icon: Icons.category_rounded,
                         title: 'No categories',
                         message:
-                            'Categories will appear when the API returns them.')
+                            'Categories will appear when the API returns them.',
+                      )
                     : ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: data.categories.length,
@@ -543,27 +711,32 @@ class CustomerHomePage extends ConsumerWidget {
               const SectionHeader(title: 'Featured Products'),
               if (data.products.isEmpty)
                 const EmptyState(
-                    icon: Icons.inventory_2_rounded,
-                    title: 'No products yet',
-                    message:
-                        'Products will appear here when vendors publish them.')
+                  icon: Icons.inventory_2_rounded,
+                  title: 'No products yet',
+                  message:
+                      'Products will appear here when vendors publish them.',
+                )
               else
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: data.products.length,
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: .68,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12),
+                    crossAxisCount: 2,
+                    childAspectRatio: .68,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
                   itemBuilder: (context, index) =>
                       ProductTile(product: data.products[index]),
                 ),
               const SectionHeader(title: 'Popular Services'),
-              ...data.services.map((service) => Padding(
+              ...data.services.map(
+                (service) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: ServiceTile(service: service))),
+                  child: ServiceTile(service: service),
+                ),
+              ),
             ],
           ),
         ),
@@ -588,22 +761,35 @@ class _HomeSearch extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
             child: Row(
               children: [
-                const Icon(Icons.timer_rounded,
-                    color: AppColors.primary, size: 21),
+                const Icon(
+                  Icons.timer_rounded,
+                  color: AppColors.primary,
+                  size: 21,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      const Text('Delivery in 10 minutes',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 16)),
-                      Text(location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.muted)),
-                    ])),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Delivery in 10 minutes',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const Icon(Icons.keyboard_arrow_down_rounded),
               ],
             ),
@@ -619,9 +805,11 @@ class _HomeSearch extends StatelessWidget {
             hintText: 'Search for products and more',
             prefixIcon: const Icon(Icons.search_rounded),
             suffixIcon: IconButton(
-                onPressed: () => context.push(
-                    '/app/browse?search=${Uri.encodeComponent(controller.text)}'),
-                icon: const Icon(Icons.arrow_forward_rounded)),
+              onPressed: () => context.push(
+                '/app/browse?search=${Uri.encodeComponent(controller.text)}',
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded),
+            ),
           ),
         ),
       ],
@@ -651,25 +839,32 @@ class _HeroBanners extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 RemoteImage(
-                    url: banner.s('image', banner.s('image_url')),
-                    borderRadius: 18),
+                  url: banner.s('image', banner.s('image_url')),
+                  borderRadius: 18,
+                ),
                 Container(
                   decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      gradient: LinearGradient(colors: [
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      colors: [
                         Colors.black.withValues(alpha: .45),
-                        Colors.transparent
-                      ])),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(18),
                   child: Align(
                     alignment: Alignment.bottomLeft,
-                    child: Text(banner.s('title', 'Planext4u'),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 20)),
+                    child: Text(
+                      banner.s('title', 'Planext4u'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -706,9 +901,12 @@ class _HomeAction extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           FittedBox(
-              child: Text(label,
-                  maxLines: 1,
-                  style: const TextStyle(fontWeight: FontWeight.w800))),
+            child: Text(
+              label,
+              maxLines: 1,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
         ],
       ),
     );
@@ -725,7 +923,8 @@ class _CategoryPill extends StatelessWidget {
     final id = category.s('id');
     return InkWell(
       onTap: () => context.push(
-          '/app/browse?category=${Uri.encodeComponent(id.isNotEmpty ? id : name)}'),
+        '/app/browse?category=${Uri.encodeComponent(id.isNotEmpty ? id : name)}',
+      ),
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
         width: 92,
@@ -742,9 +941,10 @@ class _CategoryPill extends StatelessWidget {
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      height: 1.08),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.08,
+                  ),
                 ),
               ),
             ),
@@ -786,7 +986,10 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
 
   void _load() {
     _future = ref.read(customerRepositoryProvider).browseProducts(
-        search: _search.text.trim(), category: _category, sort: _sort);
+          search: _search.text.trim(),
+          category: _category,
+          sort: _sort,
+        );
   }
 
   @override
@@ -807,8 +1010,9 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
                 hintText: 'Search products',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: IconButton(
-                    icon: const Icon(Icons.tune_rounded),
-                    onPressed: () => _showFilters(context)),
+                  icon: const Icon(Icons.tune_rounded),
+                  onPressed: () => _showFilters(context),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -817,25 +1021,28 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const SizedBox(
-                      height: 320,
-                      child: Center(child: CircularProgressIndicator()));
+                    height: 320,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
                 }
                 final products = snapshot.data ?? [];
                 if (products.isEmpty) {
                   return const EmptyState(
-                      icon: Icons.search_off_rounded,
-                      title: 'No products found',
-                      message: 'Try a different search, category, or sort.');
+                    icon: Icons.search_off_rounded,
+                    title: 'No products found',
+                    message: 'Try a different search, category, or sort.',
+                  );
                 }
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: products.length,
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: .68,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12),
+                    crossAxisCount: 2,
+                    childAspectRatio: .68,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
                   itemBuilder: (context, index) =>
                       ProductTile(product: products[index]),
                 );
@@ -857,28 +1064,34 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Sort products',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+            const Text(
+              'Sort products',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+            ),
             _SortOption(
-                label: 'Latest',
-                value: 'latest',
-                selected: _sort,
-                onTap: _applySort),
+              label: 'Latest',
+              value: 'latest',
+              selected: _sort,
+              onTap: _applySort,
+            ),
             _SortOption(
-                label: 'Price: Low to High',
-                value: 'price_low',
-                selected: _sort,
-                onTap: _applySort),
+              label: 'Price: Low to High',
+              value: 'price_low',
+              selected: _sort,
+              onTap: _applySort,
+            ),
             _SortOption(
-                label: 'Price: High to Low',
-                value: 'price_high',
-                selected: _sort,
-                onTap: _applySort),
+              label: 'Price: High to Low',
+              value: 'price_high',
+              selected: _sort,
+              onTap: _applySort,
+            ),
             _SortOption(
-                label: 'Rating',
-                value: 'rating',
-                selected: _sort,
-                onTap: _applySort),
+              label: 'Rating',
+              value: 'rating',
+              selected: _sort,
+              onTap: _applySort,
+            ),
           ],
         ),
       ),
@@ -910,7 +1123,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
         Map<String, dynamic>?,
         List<Map<String, dynamic>>,
         Map<String, dynamic>,
-        List<Map<String, dynamic>>
+        List<Map<String, dynamic>>,
       )> _productFuture;
   int _qty = 1;
   int _imageIndex = 0;
@@ -944,7 +1157,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
       'imageUrls',
       'bannerUrls',
       'mediaUrls',
-      'media_urls'
+      'media_urls',
     ]) {
       final raw = product[key];
       if (raw is List) {
@@ -1018,7 +1231,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
             Map<String, dynamic>?,
             List<Map<String, dynamic>>,
             Map<String, dynamic>,
-            List<Map<String, dynamic>>
+            List<Map<String, dynamic>>,
           )>(
         future: _productFuture,
         builder: (context, snapshot) {
@@ -1040,9 +1253,10 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
           final product = snapshot.data?.$1;
           if (product == null) {
             return const EmptyState(
-                icon: Icons.inventory_2_rounded,
-                title: 'Product not found',
-                message: 'This product may no longer be available.');
+              icon: Icons.inventory_2_rounded,
+              title: 'Product not found',
+              message: 'This product may no longer be available.',
+            );
           }
           final variants = snapshot.data?.$2 ?? _variantsOf(product);
           final summary = snapshot.data?.$3 ?? {};
@@ -1051,8 +1265,10 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
           num price = product.n('price');
           final variant = _matchedVariant;
           if (variant != null) {
-            price = variant.n('finalPrice',
-                variant.n('sellPrice', variant.n('price', price)));
+            price = variant.n(
+              'finalPrice',
+              variant.n('sellPrice', variant.n('price', price)),
+            );
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -1066,12 +1282,16 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                 child: Column(
                   children: [
                     RemoteImage(
-                        url: gallery.isEmpty
-                            ? product.s('image')
-                            : gallery[_imageIndex.clamp(0, gallery.length - 1)],
-                        height: 310,
-                        width: double.infinity,
-                        borderRadius: 12),
+                      url: gallery.isEmpty
+                          ? product.s('image')
+                          : gallery[_imageIndex.clamp(
+                              0,
+                              gallery.length - 1,
+                            )],
+                      height: 310,
+                      width: double.infinity,
+                      borderRadius: 12,
+                    ),
                     if (gallery.length > 1) ...[
                       const SizedBox(height: 10),
                       SizedBox(
@@ -1085,14 +1305,18 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                             child: Container(
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                    color: i == _imageIndex
-                                        ? AppColors.primary
-                                        : AppColors.border,
-                                    width: 2),
+                                  color: i == _imageIndex
+                                      ? AppColors.primary
+                                      : AppColors.border,
+                                  width: 2,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: RemoteImage(
-                                  url: gallery[i], width: 64, height: 64),
+                                url: gallery[i],
+                                width: 64,
+                                height: 64,
+                              ),
                             ),
                           ),
                         ),
@@ -1102,51 +1326,64 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(product.s('title'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.w900)),
+              Text(
+                product.s('title'),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
               const SizedBox(height: 6),
               Row(
                 children: [
                   if (summary.n('average', summary.n('avgRating')) > 0)
                     StatusBadge(
-                        '${summary.n('average', summary.n('avgRating')).toStringAsFixed(1)} ★'),
+                      '${summary.n('average', summary.n('avgRating')).toStringAsFixed(1)} ★',
+                    ),
                   const SizedBox(width: 8),
                   Text(
-                      product.s('vendor_name').isEmpty
-                          ? '1 unit'
-                          : product.s('vendor_name'),
-                      style: const TextStyle(
-                          color: AppColors.muted, fontWeight: FontWeight.w700)),
+                    product.s('vendor_name').isEmpty
+                        ? '1 unit'
+                        : product.s('vendor_name'),
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
-              Text(money(price),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.brandDark,
-                      fontSize: 24)),
+              Text(
+                money(price),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.brandDark,
+                  fontSize: 24,
+                ),
+              ),
               if (variants.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 for (final key in _attrKeys(variants)) ...[
                   Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(key,
-                          style: const TextStyle(fontWeight: FontWeight.w800))),
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      key,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
                     children: _attrValues(variants, key)
-                        .map((v) => ChoiceChip(
-                              label: Text(v),
-                              selected: _attrs[key] == v,
-                              onSelected: (_) => setState(() {
-                                _attrs = {..._attrs, key: v};
-                                _matchVariant(variants);
-                              }),
-                            ))
+                        .map(
+                          (v) => ChoiceChip(
+                            label: Text(v),
+                            selected: _attrs[key] == v,
+                            onSelected: (_) => setState(() {
+                              _attrs = {..._attrs, key: v};
+                              _matchVariant(variants);
+                            }),
+                          ),
+                        )
                         .toList(),
                   ),
                   const SizedBox(height: 8),
@@ -1155,8 +1392,10 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Text('Qty',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  const Text(
+                    'Qty',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
                   const SizedBox(width: 12),
                   _QtyStepper(
                     qty: _qty,
@@ -1165,8 +1404,15 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              Text(product.s('description',
-                  product.s('long_description', 'No description available.'))),
+              Text(
+                product.s(
+                  'description',
+                  product.s(
+                    'long_description',
+                    'No description available.',
+                  ),
+                ),
+              ),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -1193,7 +1439,8 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
                           .toggleWishlist(widget.id);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Wishlist updated')));
+                          const SnackBar(content: Text('Wishlist updated')),
+                        );
                       }
                     },
                     icon: const Icon(Icons.favorite_rounded),
@@ -1204,28 +1451,34 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
               OutlinedButton.icon(
                 onPressed: product.s('vendor_id').isEmpty
                     ? null
-                    : () =>
-                        context.push('/app/vendor/${product.s('vendor_id')}'),
+                    : () => context.push(
+                          '/app/vendor/${product.s('vendor_id')}',
+                        ),
                 icon: const Icon(Icons.storefront_rounded),
                 label: const Text('View Seller'),
               ),
               const SectionHeader(title: 'Reviews'),
               if (reviews.isEmpty)
-                const Text('No reviews yet.',
-                    style: TextStyle(color: AppColors.muted))
+                const Text(
+                  'No reviews yet.',
+                  style: TextStyle(color: AppColors.muted),
+                )
               else
-                ...reviews.map((r) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: AppCard(
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(r.s('customer_name', 'Customer')),
-                          subtitle:
-                              Text(r.s('comment', r.s('review', r.s('body')))),
-                          trailing: Text('${r.i('rating')} ★'),
+                ...reviews.map(
+                  (r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: AppCard(
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(r.s('customer_name', 'Customer')),
+                        subtitle: Text(
+                          r.s('comment', r.s('review', r.s('body'))),
                         ),
+                        trailing: Text('${r.i('rating')} ★'),
                       ),
-                    )),
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -1238,7 +1491,7 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
         Map<String, dynamic>?,
         List<Map<String, dynamic>>,
         Map<String, dynamic>,
-        List<Map<String, dynamic>>
+        List<Map<String, dynamic>>,
       )> _load() async {
     final repo = ref.read(customerRepositoryProvider);
     final product = await repo.product(widget.id);
@@ -1250,8 +1503,10 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
     return (product, variants, summary, reviews);
   }
 
-  Future<void> _addToCart(Map<String, dynamic> product,
-      {required bool buyNow}) async {
+  Future<void> _addToCart(
+    Map<String, dynamic> product, {
+    required bool buyNow,
+  }) async {
     try {
       final repo = ref.read(customerRepositoryProvider);
       if (buyNow) await repo.clearCart();
@@ -1259,8 +1514,10 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
       final priced = {
         ...product,
         if (_matchedVariant != null)
-          'price': _matchedVariant!.n('finalPrice',
-              _matchedVariant!.n('sellPrice', product.n('price'))),
+          'price': _matchedVariant!.n(
+            'finalPrice',
+            _matchedVariant!.n('sellPrice', product.n('price')),
+          ),
       };
       await repo.addToCart(
         priced,
@@ -1273,13 +1530,15 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
       if (buyNow) {
         context.push('/app/payment');
       } else {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Added to cart')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Added to cart')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -1298,9 +1557,10 @@ class CustomerCartPage extends ConsumerWidget {
       child: summary.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(
-            icon: Icons.shopping_cart_rounded,
-            title: 'Cart unavailable',
-            message: e.toString()),
+          icon: Icons.shopping_cart_rounded,
+          title: 'Cart unavailable',
+          message: e.toString(),
+        ),
         data: (cart) {
           if (cart.items.isEmpty) {
             return EmptyState(
@@ -1308,8 +1568,9 @@ class CustomerCartPage extends ConsumerWidget {
               title: 'Your cart is empty',
               message: 'Add products from the shop to checkout.',
               action: FilledButton(
-                  onPressed: () => context.push('/app/browse'),
-                  child: const Text('Shop Now')),
+                onPressed: () => context.push('/app/browse'),
+                child: const Text('Shop Now'),
+              ),
             );
           }
           return ListView(
@@ -1319,27 +1580,43 @@ class CustomerCartPage extends ConsumerWidget {
                 padding: const EdgeInsets.all(14),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border)),
-                child: const Row(children: [
-                  CircleAvatar(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Row(
+                  children: [
+                    CircleAvatar(
                       backgroundColor: AppColors.accent,
-                      child:
-                          Icon(Icons.timer_rounded, color: AppColors.primary)),
-                  SizedBox(width: 12),
-                  Expanded(
+                      child: Icon(
+                        Icons.timer_rounded,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
                       child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text('Delivery in 10 minutes',
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Delivery in 10 minutes',
                             style: TextStyle(
-                                fontWeight: FontWeight.w900, fontSize: 17)),
-                        Text('Shipment of all items',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          Text(
+                            'Shipment of all items',
                             style: TextStyle(
-                                color: AppColors.muted, fontSize: 12)),
-                      ])),
-                ]),
+                              color: AppColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
               for (final item in cart.items)
                 Padding(
@@ -1353,15 +1630,21 @@ class CustomerCartPage extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(item.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800)),
-                              Text(money(item.price),
-                                  style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w900)),
+                              Text(
+                                item.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                money(item.price),
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1376,7 +1659,8 @@ class CustomerCartPage extends ConsumerWidget {
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(e.toString())));
+                                  SnackBar(content: Text(e.toString())),
+                                );
                               }
                             }
                           },
@@ -1415,7 +1699,8 @@ class CustomerCartPage extends ConsumerWidget {
                     : () => context.push('/app/payment'),
                 icon: const Icon(Icons.payment_rounded),
                 label: Text(
-                    auth == null ? 'Login to Checkout' : 'Proceed to Payment'),
+                  auth == null ? 'Login to Checkout' : 'Proceed to Payment',
+                ),
               ),
             ],
           );
@@ -1464,7 +1749,9 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       final points = int.tryParse(_points.text.trim()) ?? 0;
       final repo = ref.read(customerRepositoryProvider);
       final summary = await repo.cartSummary(
-          pointsUsed: points, couponDiscount: _couponDiscount);
+        pointsUsed: points,
+        couponDiscount: _couponDiscount,
+      );
       final addresses = await repo.customerAddresses(auth.id);
       if (!mounted) return;
       setState(() {
@@ -1488,9 +1775,10 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     if (auth == null) return const _LoginRequired();
     if (_loading) {
       return const CustomerScaffold(
-          title: 'Payment',
-          showBack: true,
-          child: Center(child: CircularProgressIndicator()));
+        title: 'Payment',
+        showBack: true,
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
     final summary = _summary;
     if (summary == null || summary.items.isEmpty) {
@@ -1498,9 +1786,10 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         title: 'Payment',
         showBack: true,
         child: EmptyState(
-            icon: Icons.shopping_cart_rounded,
-            title: 'Cart is empty',
-            message: 'Add products before payment.'),
+          icon: Icons.shopping_cart_rounded,
+          title: 'Cart is empty',
+          message: 'Add products before payment.',
+        ),
       );
     }
     final address = _addresses.isEmpty ? null : _addresses.first;
@@ -1514,16 +1803,19 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
           AppCard(
             child: address == null
                 ? const Text(
-                    'No saved address. Add one from profile edit or set location.')
+                    'No saved address. Add one from profile edit or set location.',
+                  )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                        Text(address.s('name', auth.name),
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w900)),
-                        Text(address.s('address_line', address.s('address'))),
-                        Text('${address.s('city')} ${address.s('pincode')}'),
-                      ]),
+                      Text(
+                        address.s('name', auth.name),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      Text(address.s('address_line', address.s('address'))),
+                      Text('${address.s('city')} ${address.s('pincode')}'),
+                    ],
+                  ),
           ),
           const SectionHeader(title: 'Rewards & coupon'),
           AppCard(
@@ -1538,7 +1830,9 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                         'Max ${summary.maxRedeemableValue.round()} pts / balance ${summary.walletBalanceBefore.round()}',
                     prefixIcon: const Icon(Icons.stars_rounded),
                     suffixIcon: TextButton(
-                        onPressed: _load, child: const Text('Apply')),
+                      onPressed: _load,
+                      child: const Text('Apply'),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1554,12 +1848,18 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                           final discount = await ref
                               .read(customerRepositoryProvider)
                               .validateCouponCode(
-                                  _coupon.text, summary.subtotal);
+                                _coupon.text,
+                                summary.subtotal,
+                              );
                           setState(() => _couponDiscount = discount);
                           await _load();
-                          messenger.showSnackBar(SnackBar(
+                          messenger.showSnackBar(
+                            SnackBar(
                               content: Text(
-                                  'Coupon applied: ${money(discount)} off')));
+                                'Coupon applied: ${money(discount)} off',
+                              ),
+                            ),
+                          );
                         } catch (e) {
                           messenger.showSnackBar(SnackBar(content: Text('$e')));
                         }
@@ -1605,22 +1905,25 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Cash on Delivery'),
                   leading: Icon(
-                      _payMethod == 'cod'
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: AppColors.primary),
+                    _payMethod == 'cod'
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: AppColors.primary,
+                  ),
                   onTap: () => setState(() => _payMethod = 'cod'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Online (Razorpay)'),
                   subtitle: const Text(
-                      'Creates a payment intent and confirms after capture'),
+                    'Creates a payment intent and confirms after capture',
+                  ),
                   leading: Icon(
-                      _payMethod == 'online'
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: AppColors.primary),
+                    _payMethod == 'online'
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: AppColors.primary,
+                  ),
                   onTap: () => setState(() => _payMethod = 'online'),
                 ),
               ],
@@ -1629,8 +1932,10 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
           if (!summary.meetsMinCart)
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
-              child: Text('Cart does not meet the minimum order amount.',
-                  style: TextStyle(color: Colors.red)),
+              child: Text(
+                'Cart does not meet the minimum order amount.',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
           if (_error != null)
             Padding(
@@ -1650,8 +1955,11 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
     );
   }
 
-  Future<void> _place(String customerId, CartSummary summary,
-      Map<String, dynamic>? address) async {
+  Future<void> _place(
+    String customerId,
+    CartSummary summary,
+    Map<String, dynamic>? address,
+  ) async {
     setState(() {
       _placing = true;
       _error = null;
@@ -1665,9 +1973,13 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         paymentMode: _payMethod,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:
-                Text('Order placed: ${order.s('orderRef', order.s('id'))}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Order placed: ${order.s('orderRef', order.s('id'))}',
+            ),
+          ),
+        );
       }
       if (_payMethod == 'online') {
         final intent = await repo.createPaymentIntentForOrder(
@@ -1689,9 +2001,13 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         if (!paid) {
           // Still leave the order pending; user can pay from My Orders later.
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
                 content: Text(
-                    'Order created. Complete payment from My Orders if needed.')));
+                  'Order created. Complete payment from My Orders if needed.',
+                ),
+              ),
+            );
           }
         } else {
           await repo.clearCartAfterPaid();
@@ -1737,16 +2053,18 @@ class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
           }
           if (snapshot.hasError) {
             return EmptyState(
-                icon: Icons.error_outline_rounded,
-                title: 'Could not load orders',
-                message: snapshot.error.toString());
+              icon: Icons.error_outline_rounded,
+              title: 'Could not load orders',
+              message: snapshot.error.toString(),
+            );
           }
           final orders = snapshot.data ?? [];
           if (orders.isEmpty) {
             return const EmptyState(
-                icon: Icons.receipt_long_rounded,
-                title: 'No orders',
-                message: 'Your orders will appear here.');
+              icon: Icons.receipt_long_rounded,
+              title: 'No orders',
+              message: 'Your orders will appear here.',
+            );
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
@@ -1772,8 +2090,10 @@ class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
                           : const SizedBox(
                               width: 44,
                               height: 44,
-                              child: Icon(Icons.receipt_long_rounded,
-                                  color: AppColors.primary),
+                              child: Icon(
+                                Icons.receipt_long_rounded,
+                                color: AppColors.primary,
+                              ),
                             ),
                     ),
                     const SizedBox(width: 12),
@@ -1782,27 +2102,32 @@ class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                              order.s('orderRef',
-                                  order.s('order_ref', order.s('id'))),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w800)),
+                            order.s(
+                              'orderRef',
+                              order.s('order_ref', order.s('id')),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
                           Text(
-                              '${shortDate(order['created_at'])} · $itemCount item${itemCount == 1 ? '' : 's'}',
-                              style: const TextStyle(color: AppColors.muted)),
+                            '${shortDate(order['created_at'])} · $itemCount item${itemCount == 1 ? '' : 's'}',
+                            style: const TextStyle(color: AppColors.muted),
+                          ),
                         ],
                       ),
                     ),
                     Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(money(order.n('total')),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 4),
-                          StatusBadge(order.s('status', 'placed')),
-                        ]),
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          money(order.n('total')),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 4),
+                        StatusBadge(order.s('status', 'placed')),
+                      ],
+                    ),
                   ],
                 ),
               );
@@ -1814,28 +2139,38 @@ class _CustomerOrdersPageState extends ConsumerState<CustomerOrdersPage> {
   }
 }
 
-class CustomerOrderDetailPage extends ConsumerWidget {
+class CustomerOrderDetailPage extends ConsumerStatefulWidget {
   const CustomerOrderDetailPage({required this.orderId, super.key});
 
   final String orderId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerOrderDetailPage> createState() =>
+      _CustomerOrderDetailPageState();
+}
+
+class _CustomerOrderDetailPageState
+    extends ConsumerState<CustomerOrderDetailPage> {
+  @override
+  Widget build(BuildContext context) {
+    final orderId = widget.orderId;
     return CustomerScaffold(
       title: 'Order Details',
       showBack: true,
-      child: FutureBuilder<Map<String, dynamic>?>(
-        future: ref.read(customerRepositoryProvider).order(orderId),
+      child: FutureBuilder<(Map<String, dynamic>?, Map<String, dynamic>?)>(
+        future: _load(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final order = snapshot.data;
+          final order = snapshot.data?.$1;
+          final tracking = snapshot.data?.$2 ?? <String, dynamic>{};
           if (order == null) {
             return const EmptyState(
-                icon: Icons.receipt_long_rounded,
-                title: 'Order not found',
-                message: 'Please check the order again.');
+              icon: Icons.receipt_long_rounded,
+              title: 'Order not found',
+              message: 'Please check the order again.',
+            );
           }
           final items = order['items'] is List
               ? (order['items'] as List)
@@ -1850,23 +2185,108 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
-                      Expanded(
+                    Row(
+                      children: [
+                        Expanded(
                           child: Text(
-                              order.s('orderRef',
-                                  order.s('order_ref', order.s('id'))),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w900))),
-                      StatusBadge(order.s('status', 'placed'))
-                    ]),
+                            order.s(
+                              'orderRef',
+                              order.s('order_ref', order.s('id')),
+                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        StatusBadge(order.s('status', 'placed')),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text('Placed on ${shortDate(order['created_at'])}'),
                     const SizedBox(height: 8),
-                    Text(money(order.n('total')),
+                    Text(
+                      money(order.n('total')),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 22,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SectionHeader(title: 'Delivery & returns'),
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.local_shipping_outlined,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Status: ${tracking.s('status', order.s('status')).replaceAll('_', ' ')}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (tracking.s('shippingType').isNotEmpty)
+                      Text('Shipping: ${tracking.s('shippingType')}'),
+                    if (tracking.s('courierName').isNotEmpty)
+                      Text('Courier: ${tracking.s('courierName')}'),
+                    if (tracking.s('trackingNumber').isNotEmpty)
+                      Text('Tracking / AWB: ${tracking.s('trackingNumber')}'),
+                    if (tracking['history'] is List) ...[
+                      const SizedBox(height: 8),
+                      for (final entry
+                          in (tracking['history'] as List).whereType<Map>())
+                        Text(
+                          '• ${entry['status']?.toString().replaceAll('_', ' ')}  ${shortDate(entry['at'])}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                    ],
+                    if (tracking['returnRequest'] is Map) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Return: ${(tracking['returnRequest'] as Map)['status']?.toString().replaceAll('_', ' ')}',
                         style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 22)),
+                          fontWeight: FontWeight.w800,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (const {
+                          'shipped',
+                          'out_for_delivery',
+                        }.contains(order.s('status').toLowerCase()))
+                          FilledButton.icon(
+                            onPressed: _confirmDelivery,
+                            icon: const Icon(Icons.check_circle_outline),
+                            label: const Text('Confirm delivery'),
+                          ),
+                        if (const {
+                              'delivered',
+                              'completed',
+                            }.contains(order.s('status').toLowerCase()) &&
+                            tracking['returnRequest'] == null)
+                          OutlinedButton.icon(
+                            onPressed: _requestReturn,
+                            icon: const Icon(Icons.keyboard_return_rounded),
+                            label: const Text('Request return'),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1880,25 +2300,34 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: RemoteImage(
-                              url: item.s('image'), width: 48, height: 48),
+                            url: item.s('image'),
+                            width: 48,
+                            height: 48,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                            child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.s('title'),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.s('title'),
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 2),
-                            Text(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
                                 '${item.i('qty', 1)} x ${money(item.n('price'))}',
-                                style: const TextStyle(color: AppColors.muted)),
-                          ],
-                        )),
-                        Text(money(item.n('price') * item.i('qty', 1)),
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
+                                style: const TextStyle(color: AppColors.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          money(item.n('price') * item.i('qty', 1)),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
                       ],
                     ),
                   ),
@@ -1940,13 +2369,17 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                           context.push('/app/vendor/${order.s('vendor_id')}'),
                   child: Row(
                     children: [
-                      const Icon(Icons.storefront_rounded,
-                          color: AppColors.primary),
+                      const Icon(
+                        Icons.storefront_rounded,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
-                          child: Text(order.s('vendor_name', 'Seller'),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800))),
+                        child: Text(
+                          order.s('vendor_name', 'Seller'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
                       if (order.s('vendor_id').isNotEmpty)
                         const Icon(Icons.chevron_right_rounded),
                     ],
@@ -1964,13 +2397,17 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                     ..writeln('---');
                   for (final item in items) {
                     buf.writeln(
-                        '${item.s('title')} x${item.i('qty', 1)} = ${money(item.n('price') * item.i('qty', 1))}');
+                      '${item.s('title')} x${item.i('qty', 1)} = ${money(item.n('price') * item.i('qty', 1))}',
+                    );
                   }
                   buf.writeln('Total: ${money(order.n('total'))}');
                   await Clipboard.setData(ClipboardData(text: buf.toString()));
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Invoice copied to clipboard')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Invoice copied to clipboard'),
+                      ),
+                    );
                   }
                 },
                 icon: const Icon(Icons.receipt_long_outlined),
@@ -1985,14 +2422,17 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                       builder: (_) => AlertDialog(
                         title: const Text('Cancel order?'),
                         content: const Text(
-                            'This will cancel the order if it has not shipped.'),
+                          'This will cancel the order if it has not shipped.',
+                        ),
                         actions: [
                           TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Keep')),
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Keep'),
+                          ),
                           FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Cancel order')),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Cancel order'),
+                          ),
                         ],
                       ),
                     );
@@ -2002,7 +2442,8 @@ class CustomerOrderDetailPage extends ConsumerWidget {
                         .cancelOrder(orderId);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Order cancelled')));
+                        const SnackBar(content: Text('Order cancelled')),
+                      );
                       context.pop();
                     }
                   },
@@ -2015,6 +2456,85 @@ class CustomerOrderDetailPage extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<(Map<String, dynamic>?, Map<String, dynamic>?)> _load() async {
+    final repo = ref.read(customerRepositoryProvider);
+    final results = await Future.wait<Object?>([
+      repo.order(widget.orderId),
+      repo.productTracking(widget.orderId),
+    ]);
+    return (
+      results[0] as Map<String, dynamic>?,
+      results[1] as Map<String, dynamic>?,
+    );
+  }
+
+  Future<void> _confirmDelivery() async {
+    try {
+      await ref
+          .read(customerRepositoryProvider)
+          .confirmProductDelivery(widget.orderId);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Delivery confirmed')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _requestReturn() async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Request return'),
+        content: TextField(
+          controller: controller,
+          minLines: 3,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            labelText: 'Reason (minimum 5 characters)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (reason == null || reason.length < 5) return;
+    try {
+      await ref
+          .read(customerRepositoryProvider)
+          .requestProductReturn(widget.orderId, reason);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Return requested')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
   }
 }
 
@@ -2049,9 +2569,10 @@ class CustomerVendorPage extends ConsumerWidget {
           final products = snapshot.data?.$2 ?? [];
           if (vendor == null) {
             return const EmptyState(
-                icon: Icons.storefront_rounded,
-                title: 'Seller not found',
-                message: 'This seller is unavailable.');
+              icon: Icons.storefront_rounded,
+              title: 'Seller not found',
+              message: 'This seller is unavailable.',
+            );
           }
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -2066,10 +2587,11 @@ class CustomerVendorPage extends ConsumerWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: RemoteImage(
-                              url: b.toString(),
-                              height: 160,
-                              width: double.infinity,
-                              borderRadius: 14),
+                            url: b.toString(),
+                            height: 160,
+                            width: double.infinity,
+                            borderRadius: 14,
+                          ),
                         ),
                     ],
                   ),
@@ -2081,46 +2603,64 @@ class CustomerVendorPage extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(vendor.s('business_name', vendor.s('name')),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900, fontSize: 18)),
-                            Text(vendor.s('city'),
-                                style: const TextStyle(color: AppColors.muted)),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              children: [
-                                StatusBadge(vendor.s('status', 'active')),
-                                if (vendor.n('rating') > 0)
-                                  StatusBadge(
-                                      '${vendor.n('rating').toStringAsFixed(1)} ★'),
-                              ],
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            vendor.s('business_name', vendor.s('name')),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
                             ),
-                            if (vendor.s('mobile').isNotEmpty ||
-                                vendor.s('email').isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              if (vendor.s('mobile').isNotEmpty)
-                                InkWell(
-                                  onTap: () => launchUrl(Uri(
-                                      scheme: 'tel', path: vendor.s('mobile'))),
-                                  child: Text(vendor.s('mobile'),
-                                      style: const TextStyle(
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w700)),
-                                ),
-                              if (vendor.s('email').isNotEmpty)
-                                InkWell(
-                                  onTap: () => launchUrl(Uri(
-                                      scheme: 'mailto',
-                                      path: vendor.s('email'))),
-                                  child: Text(vendor.s('email'),
-                                      style: const TextStyle(
-                                          color: AppColors.muted)),
+                          ),
+                          Text(
+                            vendor.s('city'),
+                            style: const TextStyle(color: AppColors.muted),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              StatusBadge(vendor.s('status', 'active')),
+                              if (vendor.n('rating') > 0)
+                                StatusBadge(
+                                  '${vendor.n('rating').toStringAsFixed(1)} ★',
                                 ),
                             ],
-                          ]),
+                          ),
+                          if (vendor.s('mobile').isNotEmpty ||
+                              vendor.s('email').isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            if (vendor.s('mobile').isNotEmpty)
+                              InkWell(
+                                onTap: () => launchUrl(
+                                  Uri(scheme: 'tel', path: vendor.s('mobile')),
+                                ),
+                                child: Text(
+                                  vendor.s('mobile'),
+                                  style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            if (vendor.s('email').isNotEmpty)
+                              InkWell(
+                                onTap: () => launchUrl(
+                                  Uri(
+                                    scheme: 'mailto',
+                                    path: vendor.s('email'),
+                                  ),
+                                ),
+                                child: Text(
+                                  vendor.s('email'),
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2128,19 +2668,21 @@ class CustomerVendorPage extends ConsumerWidget {
               const SectionHeader(title: 'Seller Products'),
               if (products.isEmpty)
                 const EmptyState(
-                    icon: Icons.inventory_2_rounded,
-                    title: 'No products',
-                    message: 'This seller has no active products.')
+                  icon: Icons.inventory_2_rounded,
+                  title: 'No products',
+                  message: 'This seller has no active products.',
+                )
               else
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: products.length,
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: .68,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12),
+                    crossAxisCount: 2,
+                    childAspectRatio: .68,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
                   itemBuilder: (context, index) =>
                       ProductTile(product: products[index]),
                 ),
@@ -2152,7 +2694,8 @@ class CustomerVendorPage extends ConsumerWidget {
   }
 
   Future<(Map<String, dynamic>?, List<Map<String, dynamic>>)> _vendorData(
-      WidgetRef ref) async {
+    WidgetRef ref,
+  ) async {
     final repo = ref.read(customerRepositoryProvider);
     return (await repo.vendor(id), await repo.vendorProducts(id));
   }
@@ -2188,27 +2731,33 @@ class _QtyStepper extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton.filledTonal(
-            onPressed: () => onChanged(qty - 1),
-            icon: const Icon(Icons.remove_rounded)),
+          onPressed: () => onChanged(qty - 1),
+          icon: const Icon(Icons.remove_rounded),
+        ),
         SizedBox(
-            width: 28,
-            child: Text('$qty',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w900))),
+          width: 28,
+          child: Text(
+            '$qty',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
         IconButton.filledTonal(
-            onPressed: () => onChanged(qty + 1),
-            icon: const Icon(Icons.add_rounded)),
+          onPressed: () => onChanged(qty + 1),
+          icon: const Icon(Icons.add_rounded),
+        ),
       ],
     );
   }
 }
 
 class _SortOption extends StatelessWidget {
-  const _SortOption(
-      {required this.label,
-      required this.value,
-      required this.selected,
-      required this.onTap});
+  const _SortOption({
+    required this.label,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final String value;
@@ -2220,9 +2769,12 @@ class _SortOption extends StatelessWidget {
     final active = value == selected;
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      title: Text(label,
-          style: TextStyle(
-              fontWeight: active ? FontWeight.w900 : FontWeight.w500)),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontWeight: active ? FontWeight.w900 : FontWeight.w500,
+        ),
+      ),
       trailing: active
           ? const Icon(Icons.check_rounded, color: AppColors.primary)
           : null,
@@ -2240,15 +2792,18 @@ class _TotalRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = TextStyle(
-        fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
-        fontSize: bold ? 17 : 14);
+      fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+      fontSize: bold ? 17 : 14,
+    );
     final formatted = value is num ? money(value as num) : value.toString();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(children: [
-        Expanded(child: Text(label, style: style)),
-        Text(formatted, style: style)
-      ]),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(formatted, style: style),
+        ],
+      ),
     );
   }
 }
@@ -2265,8 +2820,9 @@ class _LoginRequired extends StatelessWidget {
         title: 'Please login',
         message: 'This section is available for registered customers.',
         action: FilledButton(
-            onPressed: () => context.push('/app/login'),
-            child: const Text('Login')),
+          onPressed: () => context.push('/app/login'),
+          child: const Text('Login'),
+        ),
       ),
     );
   }

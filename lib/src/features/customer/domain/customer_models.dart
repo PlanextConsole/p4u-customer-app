@@ -8,8 +8,13 @@ class CustomerHomeData {
     required this.categories,
     required this.serviceCategories,
     required this.products,
+    required this.trendingProducts,
+    required this.dealProducts,
+    required this.recentProducts,
     required this.services,
     required this.storeBanners,
+    required this.brands,
+    required this.classified,
     required this.assets,
   });
 
@@ -17,8 +22,13 @@ class CustomerHomeData {
   final List<Map<String, dynamic>> categories;
   final List<Map<String, dynamic>> serviceCategories;
   final List<Map<String, dynamic>> products;
+  final List<Map<String, dynamic>> trendingProducts;
+  final List<Map<String, dynamic>> dealProducts;
+  final List<Map<String, dynamic>> recentProducts;
   final List<Map<String, dynamic>> services;
   final List<Map<String, dynamic>> storeBanners;
+  final List<Map<String, dynamic>> brands;
+  final List<Map<String, dynamic>> classified;
   final Map<String, String> assets;
 
   static const empty = CustomerHomeData(
@@ -26,8 +36,13 @@ class CustomerHomeData {
     categories: [],
     serviceCategories: [],
     products: [],
+    trendingProducts: [],
+    dealProducts: [],
+    recentProducts: [],
     services: [],
     storeBanners: [],
+    brands: [],
+    classified: [],
     assets: {},
   );
 }

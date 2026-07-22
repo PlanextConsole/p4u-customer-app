@@ -23,7 +23,7 @@ class CustomerScaffold extends ConsumerWidget {
   final int? bottomNavIndex;
 
   static const nav = [
-    _NavItem('Home', Icons.home_rounded, '/app'),
+    _NavItem('Home', Icons.home_rounded, '/app/home'),
     _NavItem('Shop', Icons.shopping_bag_rounded, '/app/browse'),
     _NavItem('Services', Icons.home_repair_service_rounded, '/app/services'),
     _NavItem('Socio', Icons.groups_rounded, '/app/social'),
@@ -126,12 +126,13 @@ void _safeBack(BuildContext context) {
 
 String? _fallbackRoute(String path) {
   if (path == '/app') return null;
+  if (path == '/app/home') return '/app';
   if (path == '/app/browse' ||
       path == '/app/services' ||
       path == '/app/social' ||
       path == '/app/find-home' ||
       path == '/app/classifieds') {
-    return '/app';
+    return '/app/home';
   }
   if (path == '/app/profile/edit') return '/app/profile';
   if (path.startsWith('/app/product/') ||
@@ -150,7 +151,7 @@ String? _fallbackRoute(String path) {
       path == '/app/set-location') {
     return '/app';
   }
-  return '/app';
+  return '/app/home';
 }
 
 class _NavItem {

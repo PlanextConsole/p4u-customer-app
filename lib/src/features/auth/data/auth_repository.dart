@@ -1,4 +1,5 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../customer/data/customer_api.dart';
@@ -32,6 +33,18 @@ class AuthRepository {
   final CustomerApi _gateway;
 
   Stream<void> get authChanges => apiSession.changes;
+
+  Future<void> _registerPush() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission();
+      final token = await messaging.getToken();
+      if (token != null) {
+        await _gateway.registerDeviceToken(
+            deviceToken: token, platform: 'flutter');
+      }
+    } catch (_) {}
+  }
 
   Future<CustomerUser?> currentCustomer() async {
     if (!await apiSession.hasToken()) return null;
@@ -86,11 +99,13 @@ class AuthRepository {
       );
     }
     await apiSession.saveAuth(auth);
+    await _registerPush();
     final profile = await _safeProfile();
     if (profile != null) await apiSession.saveProfile(profile);
     return CustomerUser.fromApi(profile ?? auth,
         fallbackId: auth['customerId']?.toString());
   }
+
   Future<CustomerUser> registerWithFirebaseIdToken({
     required String firebaseIdToken,
     required String name,
@@ -105,6 +120,7 @@ class AuthRepository {
       final auth = _authPayloadFromPhoneExchange(exchange);
       if (_hasAccessToken(auth)) {
         await apiSession.saveAuth(auth);
+        await _registerPush();
         final profile = await _safeProfile();
         if (profile != null) await apiSession.saveProfile(profile);
         return CustomerUser.fromApi(profile ?? auth,
@@ -138,7 +154,9 @@ class AuthRepository {
     );
     final auth = _authPayloadFromPhoneExchange(response);
     await apiSession.saveAuth(auth);
-    final profile = _profilePayloadFromAuthResponse(response) ?? await _safeProfile();
+    await _registerPush();
+    final profile =
+        _profilePayloadFromAuthResponse(response) ?? await _safeProfile();
     if (profile != null) await apiSession.saveProfile(profile);
     return CustomerUser.fromApi(profile ?? auth,
         fallbackId: auth['customerId']?.toString());
@@ -167,8 +185,8 @@ class AuthRepository {
     final meta = raw['metadata'] is Map
         ? Map<String, dynamic>.from(raw['metadata'] as Map)
         : <String, dynamic>{};
-    final name = (raw['fullName'] ?? raw['name'] ?? raw['displayName'] ?? '')
-        .toString();
+    final name =
+        (raw['fullName'] ?? raw['name'] ?? raw['displayName'] ?? '').toString();
     final phone = (raw['phone'] ?? raw['mobile'] ?? '').toString();
     return {
       ...raw,
@@ -194,6 +212,3 @@ final customerAuthStateProvider = StreamProvider<CustomerUser?>((ref) async* {
     yield await repo.currentCustomer();
   }
 });
-
-
-

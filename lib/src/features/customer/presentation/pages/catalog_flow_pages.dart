@@ -17,17 +17,23 @@ class CustomerShopCatalogPage extends ConsumerWidget {
   const CustomerShopCatalogPage({
     this.initialCategoryId,
     this.initialSearch,
+    this.initialSubcategoryId,
+    this.initialSort,
     super.key,
   });
 
   final String? initialCategoryId;
   final String? initialSearch;
+  final String? initialSubcategoryId;
+  final String? initialSort;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _CatalogFlowPage(
         kind: 'product',
         initialCategoryId: initialCategoryId,
         initialSearch: initialSearch,
+        initialSubcategoryId: initialSubcategoryId,
+        initialSort: initialSort,
       );
 }
 
@@ -35,17 +41,26 @@ class CustomerServiceCatalogPage extends ConsumerWidget {
   const CustomerServiceCatalogPage({
     this.initialCategoryId,
     this.initialSearch,
+    this.initialSubcategoryId,
+    this.initialSort,
+    this.title,
     super.key,
   });
 
   final String? initialCategoryId;
   final String? initialSearch;
+  final String? initialSubcategoryId;
+  final String? initialSort;
+  final String? title;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _CatalogFlowPage(
         kind: 'service',
         initialCategoryId: initialCategoryId,
         initialSearch: initialSearch,
+        initialSubcategoryId: initialSubcategoryId,
+        initialSort: initialSort,
+        title: title,
       );
 }
 
@@ -54,11 +69,17 @@ class _CatalogFlowPage extends ConsumerStatefulWidget {
     required this.kind,
     this.initialCategoryId,
     this.initialSearch,
+    this.initialSubcategoryId,
+    this.initialSort,
+    this.title,
   });
 
   final String kind;
   final String? initialCategoryId;
   final String? initialSearch;
+  final String? initialSubcategoryId;
+  final String? initialSort;
+  final String? title;
 
   @override
   ConsumerState<_CatalogFlowPage> createState() => _CatalogFlowPageState();
@@ -89,6 +110,7 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
   void initState() {
     super.initState();
     _search.text = widget.initialSearch ?? '';
+    _sort = widget.initialSort ?? 'latest';
     _bootstrap();
   }
 
@@ -114,8 +136,8 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
         repo.catalogCategories(kind: widget.kind),
         if (_isShop) repo.wishlist() else repo.serviceWishlist(),
       ]);
-      final roots =
-          (values[0] as List<Map<String, dynamic>>).where(_isRoot).toList();
+      final allCategories = values[0] as List<Map<String, dynamic>>;
+      final roots = allCategories.where(_isRoot).toList();
       if (!mounted) return;
       setState(() {
         _categories = roots;
@@ -127,9 +149,47 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
       });
 
       final requestedId = widget.initialCategoryId?.trim() ?? '';
+      final requestedSubcategoryId = widget.initialSubcategoryId?.trim() ?? '';
       final requested =
           roots.where((row) => row.s('id') == requestedId).firstOrNull;
-      if (requested != null) {
+      final requestedChild = allCategories
+          .where((row) =>
+              !_isRoot(row) &&
+              row.s('id') ==
+                  (requestedSubcategoryId.isNotEmpty
+                      ? requestedSubcategoryId
+                      : requestedId))
+          .firstOrNull;
+      if (requestedChild != null) {
+        final parentId =
+            requestedChild.s('parentId', requestedChild.s('parent_id'));
+        final parent =
+            roots.where((row) => row.s('id') == parentId).firstOrNull;
+        setState(() {
+          _category = parent;
+          _subcategory = requestedChild;
+          _step = _CatalogStep.results;
+        });
+        await _loadResults();
+      } else if (requested != null && requestedSubcategoryId.isNotEmpty) {
+        _category = requested;
+        final children = await ref
+            .read(customerRepositoryProvider)
+            .categoryChildren(requested.s('id'), kind: widget.kind);
+        final child = children
+            .where((row) => row.s('id') == requestedSubcategoryId)
+            .firstOrNull;
+        if (child != null) {
+          setState(() {
+            _subcategory = child;
+            _subcategories = children;
+            _step = _CatalogStep.results;
+          });
+          await _loadResults();
+        } else {
+          await _selectCategory(requested);
+        }
+      } else if (requested != null) {
         await _selectCategory(requested);
       } else if (_search.text.trim().isNotEmpty) {
         await _showAllResults();
@@ -263,7 +323,7 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
   @override
   Widget build(BuildContext context) {
     return CustomerScaffold(
-      title: _isShop ? 'Shop' : 'Services',
+      title: widget.title ?? (_isShop ? 'Shop' : 'Services'),
       bottomNavIndex: _isShop ? 1 : 2,
       child: RefreshIndicator(
         onRefresh: _step == _CatalogStep.categories

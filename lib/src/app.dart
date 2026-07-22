@@ -9,16 +9,27 @@ import 'features/auth/presentation/auth_pages.dart';
 import 'features/customer/presentation/pages/account_pages.dart';
 import 'features/customer/presentation/pages/catalog_flow_pages.dart';
 import 'features/customer/presentation/pages/commerce_pages.dart';
+import 'features/customer/presentation/pages/customer_home_page.dart';
+import 'features/customer/presentation/pages/food_pages.dart';
 import 'features/customer/presentation/pages/property_pages.dart';
 import 'features/customer/presentation/pages/service_classified_pages.dart';
 import 'features/customer/presentation/pages/social_pages.dart';
 import 'features/customer/presentation/pages/vendor_register_page.dart';
+
+GoRouter? _customerRouter;
+void openCustomerDeepLink(String raw) {
+  var path = Uri.tryParse(raw)?.path ?? raw;
+  if (path.startsWith('/food/')) path = '/app';
+  if (path.startsWith('/app/')) _customerRouter?.go(path);
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
   final protectedPaths = <String>[
     '/app/cart',
     '/app/payment',
     '/app/orders',
+    '/app/food/checkout',
+    '/app/food/orders',
     '/app/bookings',
     '/app/profile',
     '/app/kyc',
@@ -38,7 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     '/app/find-home/rent-tracker',
   ];
 
-  return GoRouter(
+  return _customerRouter = GoRouter(
     initialLocation: '/app',
     redirect: (context, state) {
       final auth = ref.read(customerAuthStateProvider).valueOrNull;
@@ -64,9 +75,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', redirect: (_, __) => '/app'),
       GoRoute(
-          path: '/auth/callback', builder: (_, __) => const CustomerHomePage()),
-      GoRoute(path: '/app', builder: (_, __) => const CustomerHomePage()),
-      GoRoute(path: '/app/home', redirect: (_, __) => '/app'),
+          path: '/auth/callback',
+          builder: (_, __) => const CustomerLandingPage()),
+      GoRoute(path: '/app', builder: (_, __) => const CustomerLandingPage()),
+      GoRoute(
+          path: '/app/home',
+          builder: (_, __) => const CustomerReferenceHomePage()),
       GoRoute(
           path: '/app/login', builder: (_, __) => const CustomerLoginPage()),
       GoRoute(
@@ -90,6 +104,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => CustomerShopCatalogPage(
           initialCategoryId: state.uri.queryParameters['category'],
           initialSearch: state.uri.queryParameters['search'],
+          initialSubcategoryId: state.uri.queryParameters['subcategory'],
+          initialSort: state.uri.queryParameters['sort'],
         ),
       ),
       GoRoute(
@@ -100,6 +116,21 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/app/vendor/:id',
           builder: (_, state) =>
               CustomerVendorPage(id: state.pathParameters['id']!)),
+      GoRoute(
+          path: '/app/food', builder: (_, __) => const FoodRestaurantsPage()),
+      GoRoute(
+          path: '/app/food/restaurants/:id',
+          builder: (_, state) =>
+              FoodMenuPage(restaurantId: state.pathParameters['id']!)),
+      GoRoute(
+          path: '/app/food/checkout',
+          builder: (_, __) => const FoodCheckoutPage()),
+      GoRoute(
+          path: '/app/food/orders', builder: (_, __) => const FoodOrdersPage()),
+      GoRoute(
+          path: '/app/food/orders/:id',
+          builder: (_, state) =>
+              FoodOrderDetailPage(orderId: state.pathParameters['id']!)),
       GoRoute(path: '/app/cart', builder: (_, __) => const CustomerCartPage()),
       GoRoute(path: '/app/payment', builder: (_, __) => const PaymentPage()),
       GoRoute(
@@ -131,6 +162,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, state) => CustomerServiceCatalogPage(
                 initialCategoryId: state.uri.queryParameters['category'],
                 initialSearch: state.uri.queryParameters['search'],
+                initialSubcategoryId: state.uri.queryParameters['subcategory'],
+                initialSort: state.uri.queryParameters['sort'],
+              )),
+      GoRoute(
+          path: '/app/emergency',
+          builder: (_, __) => const CustomerServiceCatalogPage(
+                initialSearch: 'emergency',
+                title: 'Emergency',
+              )),
+      GoRoute(
+          path: '/app/quick-assist',
+          builder: (_, __) => const CustomerServiceCatalogPage(
+                initialSearch: 'quick assist',
+                title: 'Quick Assist',
               )),
       GoRoute(
           path: '/app/service/:id',

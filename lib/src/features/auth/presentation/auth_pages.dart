@@ -124,7 +124,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
       if (token == null) throw StateError('Missing Firebase ID token');
       await ref.read(authRepositoryProvider).signInWithFirebaseIdToken(token);
       ref.invalidate(customerAuthStateProvider);
-      if (mounted) context.go(_returnTo);
+      if (mounted) context.go('/app');
     } catch (e) {
       _snack(_friendly(e));
     } finally {
@@ -133,20 +133,10 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
     }
   }
 
-  String get _returnTo {
-    final value = GoRouterState.of(context).uri.queryParameters['returnTo'];
-    if (value == null || value.isEmpty) return '/app';
-    if (!value.startsWith('/app')) return '/app';
-    if (value.startsWith('/app/login') || value.startsWith('/app/register')) {
-      return '/app';
-    }
-    return value;
-  }
-
   @override
   Widget build(BuildContext context) {
     ref.listen(customerAuthStateProvider, (_, next) {
-      if (next.valueOrNull != null && mounted) context.go(_returnTo);
+      if (next.valueOrNull != null && mounted) context.go('/app');
     });
     return Scaffold(
       body: Container(
@@ -265,9 +255,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
                                         : Icons.arrow_forward_rounded),
                                 label: Text(_loading
                                     ? 'Please wait...'
-                                    : (_otpSent
-                                        ? 'Verify OTP'
-                                        : 'Send OTP')),
+                                    : (_otpSent ? 'Verify OTP' : 'Send OTP')),
                                 style: _authOutlineStyle(
                                     minimumSize: const Size.fromHeight(52)),
                               ),

@@ -18,29 +18,85 @@ class CustomerRepository {
   static const _wishlistKey = 'p4u_customer_wishlist';
   static const _serviceWishlistKey = 'p4u_customer_service_wishlist';
   static const _locationKey = 'p4u_customer_location';
+  static const _recentProductsKey = 'p4u_customer_recent_products';
   static const _latitudeKey = 'p4u_customer_latitude';
   static const _longitudeKey = 'p4u_customer_longitude';
 
   Future<CustomerHomeData> getHome() async {
-    // Keep the home screen gentle on the public API. Parallel bursts can hit IP rate limits.
-    final banners = await _gateway.banners(limit: 20);
-    final categories = await _gateway.categories(limit: 50, kind: 'product');
+    Map<String, dynamic> content = <String, dynamic>{};
+    try {
+      content = await _gateway.homeContent();
+    } catch (_) {
+      // Catalogue data still produces a useful Home if CMS is temporarily down.
+    }
+
+    var banners = apiItems(content['banners']);
+    if (banners.isEmpty) banners = await _gateway.banners(limit: 20);
+    var storeBanners = apiItems(content['popups']);
+    if (storeBanners.isEmpty) {
+      storeBanners = await _gateway.popups(limit: 10);
+    }
+
+    final categories = await _gateway.categories(limit: 200, kind: 'product');
     final serviceCategories =
-        await _gateway.categories(limit: 50, kind: 'service');
-    final featuredProducts = await _gateway.featuredProducts(limit: 20);
-    final serviceHighlights = await _gateway.serviceHighlights(limit: 12);
-    final popups = await _gateway.popups(limit: 10);
-    final home = await _gateway.homeContent();
-    final products = featuredProducts.map(_normalizeProduct).toList();
-    final services = serviceHighlights.map(_normalizeService).toList();
+        await _gateway.categories(limit: 100, kind: 'service');
+    final catalogueProducts =
+        await _gateway.browseProducts(limit: 120, sort: 'latest');
+    final catalogueServices = await _gateway.services(limit: 40);
+
+    final products = catalogueProducts
+        .map(_normalizeProduct)
+        .where((row) => row.s('id').isNotEmpty)
+        .toList();
+    products.sort((a, b) {
+      final featured =
+          (b['isFeatured'] == true || b['is_featured'] == true ? 1 : 0)
+              .compareTo(
+                  a['isFeatured'] == true || a['is_featured'] == true ? 1 : 0);
+      if (featured != 0) return featured;
+      final orders = b
+          .n('orderCount', b.n('order_count'))
+          .compareTo(a.n('orderCount', a.n('order_count')));
+      if (orders != 0) return orders;
+      return b.n('rating').compareTo(a.n('rating'));
+    });
+
+    final trending = [...products]..sort((a, b) {
+        final rating = b
+            .n('rating', b.n('avgRating'))
+            .compareTo(a.n('rating', a.n('avgRating')));
+        if (rating != 0) return rating;
+        return b
+            .n('reviews', b.n('reviewCount'))
+            .compareTo(a.n('reviews', a.n('reviewCount')));
+      });
+    final deals = products.where((row) {
+      final original = row.n('originalPrice', row.n('original_price'));
+      return row['isDealOfDay'] == true ||
+          row['is_deal_of_day'] == true ||
+          row.n('discount') > 0 ||
+          (original > row.n('price') && row.n('price') > 0);
+    }).toList();
+    final recent = await _recentViewedProducts();
+
     return CustomerHomeData(
       banners: banners,
       categories: categories.map(_normalizeCategory).toList(),
       serviceCategories: serviceCategories.map(_normalizeCategory).toList(),
-      products: products.take(10).toList(),
-      services: services.take(10).toList(),
-      storeBanners: popups,
-      assets: _assetMap(home),
+      products: products.take(20).toList(),
+      trendingProducts: trending.take(12).toList(),
+      dealProducts: deals.take(12).toList(),
+      recentProducts: recent,
+      services: catalogueServices
+          .map(_normalizeService)
+          .where((row) => row.s('id').isNotEmpty)
+          .take(20)
+          .toList(),
+      storeBanners: storeBanners,
+      brands: apiItems(content['brands']),
+      classified:
+          apiItems(content['classified']).map(_normalizeClassified).toList(),
+      assets: _assetMap(content),
     );
   }
 
@@ -108,7 +164,9 @@ class CustomerRepository {
 
   Future<Map<String, dynamic>?> product(String id) async {
     final data = await _gateway.product(id);
-    return _normalizeProduct(data);
+    final product = _normalizeProduct(data);
+    await _rememberProduct(product);
+    return product;
   }
 
   Future<List<Map<String, dynamic>>> productVariants(String productId) async {
@@ -419,12 +477,34 @@ class CustomerRepository {
     return rows.map(_normalizeBooking).toList();
   }
 
+  Future<Map<String, dynamic>> serviceCompletionOtp(String bookingId) =>
+      _gateway.serviceCompletionOtp(bookingId);
+  Future<void> confirmServiceCompletion(String bookingId, bool accept,
+      {String? reason}) async {
+    await _gateway.confirmServiceCompletion(bookingId, accept, reason: reason);
+  }
+
+  Future<void> disputeService(String bookingId, String reason) async {
+    await _gateway.disputeService(bookingId, reason);
+  }
+
   Future<void> cancelBooking(String bookingId) async {
     await _gateway.cancelBooking(bookingId);
   }
 
   Future<void> cancelOrder(String orderId) async {
     await _gateway.cancelOrder(orderId);
+  }
+
+  Future<Map<String, dynamic>> productTracking(String orderId) =>
+      _gateway.productTracking(orderId);
+
+  Future<void> confirmProductDelivery(String orderId) async {
+    await _gateway.confirmProductDelivery(orderId);
+  }
+
+  Future<void> requestProductReturn(String orderId, String reason) async {
+    await _gateway.requestProductReturn(orderId, reason);
   }
 
   Future<Map<String, dynamic>?> order(String id) async {
@@ -800,121 +880,65 @@ class CustomerRepository {
     });
   }
 
-  Future<List<Map<String, dynamic>>> supportTickets(String customerId) async {
-    final profile = await this.profile(customerId) ?? {};
-    return apiItems(_metadataOf(profile)['supportTickets']);
-  }
+  Future<List<Map<String, dynamic>>> supportTickets(String customerId) =>
+      _gateway.supportTickets();
 
   Future<void> createSupportTicket(
       String customerId, Map<String, dynamic> data) async {
-    final profile = await this.profile(customerId) ?? {};
-    final tickets = apiItems(_metadataOf(profile)['supportTickets']);
-    tickets.insert(0, {
-      ...data,
-      'id': 'ticket-',
-      'status': 'open',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-    await _updateProfileMetadata(customerId, {'supportTickets': tickets});
+    await _gateway.createSupportTicket(data);
   }
 
+  Future<Map<String, dynamic>> supportTicket(String id) =>
+      _gateway.supportTicket(id);
+  Future<Map<String, dynamic>> sendSupportMessage(String id, String message) =>
+      _gateway.sendSupportMessage(id, message);
+  Future<Map<String, dynamic>> closeSupportTicket(String id) =>
+      _gateway.closeSupportTicket(id);
   Future<List<Map<String, dynamic>>> properties(
-      {String? transactionType, String? search}) async {
-    final localRows = await _localPropertyListings();
-    final filteredLocal = localRows.where((row) {
-      final typeOk = transactionType == null ||
-          transactionType.isEmpty ||
-          row.s('transaction_type', row.s('listingType')) == transactionType;
-      final q = search?.trim().toLowerCase() ?? '';
-      final queryOk = q.isEmpty ||
-          [
-            row.s('title'),
-            row.s('city'),
-            row.s('locality'),
-            row.s('description')
-          ].join(' ').toLowerCase().contains(q);
-      return typeOk && queryOk;
-    }).toList();
-    if (search == null || search.isEmpty) return filteredLocal;
-    final remoteRows = await _gateway.searchCatalog(
-        query: search, type: transactionType ?? 'property', limit: 50);
-    return [...filteredLocal, ...remoteRows];
-  }
+          {String? transactionType, String? search}) =>
+      _gateway.properties(query: search, type: transactionType);
 
-  Future<Map<String, dynamic>?> property(String id) async {
-    final localRows = await _localPropertyListings();
-    for (final row in localRows) {
-      if (row.s('id') == id) return row;
-    }
-    final rows =
-        await _gateway.searchCatalog(query: id, type: 'property', limit: 1);
-    return rows.isEmpty ? null : rows.first;
-  }
+  Future<Map<String, dynamic>?> property(String id) async =>
+      _gateway.property(id);
 
   Future<void> createProperty(
       String customerId, Map<String, dynamic> data) async {
-    final profile = await this.profile(customerId) ?? {};
-    final properties = apiItems(_metadataOf(profile)['propertyListings']);
-    properties.insert(0, {
-      ...data,
-      'id': 'property-',
-      'user_id': customerId,
-      'status': 'pending',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-    await _updateProfileMetadata(customerId, {'propertyListings': properties});
+    await _gateway.createProperty(data);
   }
 
-  Future<List<Map<String, dynamic>>> savedSearches(String customerId) async {
-    final profile = await this.profile(customerId) ?? {};
-    return apiItems(_metadataOf(profile)['savedSearches']);
+  Future<List<Map<String, dynamic>>> myProperties() => _gateway.myProperties();
+
+  Future<void> inquireProperty(String propertyId, String message) async {
+    await _gateway.inquireProperty(propertyId, message);
   }
 
-  Future<List<Map<String, dynamic>>> propertyMessages(String customerId) async {
-    return socialConversations(customerId);
+  Future<List<Map<String, dynamic>>> savedSearches(String customerId) =>
+      _gateway.propertySavedSearches();
+
+  Future<void> savePropertySearch(Map<String, dynamic> data) async {
+    await _gateway.savePropertySearch(data);
   }
 
-  Future<List<Map<String, dynamic>>> rentTrackers(String customerId) async {
-    final profile = await this.profile(customerId) ?? {};
-    return apiItems(_metadataOf(profile)['rentTrackers']);
-  }
+  Future<List<Map<String, dynamic>>> propertyMessages(String customerId) =>
+      _gateway.propertyMessages();
+
+  Future<List<Map<String, dynamic>>> rentTrackers(String customerId) =>
+      _gateway.propertyRentTrackers();
 
   Future<void> saveRentTracker(
       String customerId, Map<String, dynamic> data) async {
-    final profile = await this.profile(customerId) ?? {};
-    final trackers = apiItems(_metadataOf(profile)['rentTrackers']);
-    trackers.insert(0, {
-      ...data,
-      'id': data.s('id', 'rent-'),
-      'updated_at': DateTime.now().toIso8601String(),
-    });
-    await _updateProfileMetadata(customerId, {'rentTrackers': trackers});
-  }
-
-  Future<List<Map<String, dynamic>>> _localPropertyListings() async {
-    if (!await apiSession.hasToken()) return [];
-    final profile =
-        await this.profile(await apiSession.customerId() ?? '') ?? {};
-    return apiItems(_metadataOf(profile)['propertyListings']);
+    await _gateway.savePropertyRentTracker(data);
   }
 
   Future<Map<String, num>> estimatePropertyValue(
       {required String propertyType, int? bhk, String? city}) async {
-    final rows = await _gateway.searchCatalog(
-        query: [propertyType, bhk, city]
-            .where((value) => value != null && value.toString().isNotEmpty)
-            .join(' '),
-        type: 'property',
-        limit: 20);
-    final prices = rows
-        .map((row) => row.n('price'))
-        .where((price) => price > 0)
-        .toList()
-      ..sort();
-    if (prices.isEmpty) return {};
-    final avg =
-        prices.fold<num>(0, (sum, price) => sum + price) / prices.length;
-    return {'low': prices.first, 'average': avg, 'high': prices.last};
+    final row = await _gateway.estimateProperty(
+        {'propertyType': propertyType, 'bhk': bhk, 'city': city});
+    return {
+      'low': row.n('low'),
+      'average': row.n('average'),
+      'high': row.n('high')
+    };
   }
 
   Future<List<Map<String, dynamic>>> socialFeed() async {
@@ -1544,6 +1568,7 @@ class CustomerRepository {
         'orderId': orderId,
         'amount': amount.toStringAsFixed(2),
         'currency': 'INR',
+        'metadata': {'orderType': 'product', 'productOrderId': orderId},
       });
 
   Future<Map<String, dynamic>> verifyPaymentPayload(
@@ -1755,6 +1780,39 @@ class CustomerRepository {
   Map<String, dynamic> _metadataOf(Map<String, dynamic> row) {
     final raw = row['metadata'];
     return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  }
+
+  Future<void> subscribeNewsletter(String email) async {
+    await _gateway.newsletterSubscribe(email.trim());
+  }
+
+  Future<List<Map<String, dynamic>>> _recentViewedProducts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_recentProductsKey);
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is List
+          ? decoded
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .take(4)
+              .toList()
+          : <Map<String, dynamic>>[];
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _rememberProduct(Map<String, dynamic> product) async {
+    final id = product.s('id');
+    if (id.isEmpty) return;
+    final rows = await _recentViewedProducts();
+    rows.removeWhere((row) => row.s('id') == id);
+    rows.insert(0, product);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _recentProductsKey, jsonEncode(rows.take(4).toList()));
   }
 
   Map<String, dynamic> _normalizeProduct(Map<String, dynamic> row) {
@@ -2289,4 +2347,18 @@ class CustomerRepository {
     }
     return value.toString().trim();
   }
+
+  Future<List<Map<String, dynamic>>> socialCalls() => _gateway.socialCalls();
+  Future<Map<String, dynamic>> socialCall(String id) => _gateway.socialCall(id);
+  Future<Map<String, dynamic>> startSocialCall(
+          String conversationId, String type,
+          {String? offerSdp}) =>
+      _gateway.startSocialCall(conversationId, type, offerSdp: offerSdp);
+  Future<Map<String, dynamic>> acceptSocialCall(String id,
+          {String? answerSdp}) =>
+      _gateway.acceptSocialCall(id, answerSdp: answerSdp);
+  Future<Map<String, dynamic>> rejectSocialCall(String id) =>
+      _gateway.rejectSocialCall(id);
+  Future<Map<String, dynamic>> endSocialCall(String id) =>
+      _gateway.endSocialCall(id);
 }

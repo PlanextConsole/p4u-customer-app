@@ -19,6 +19,7 @@ import '../../../../core/ads/admob_banner_card.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import 'account_pages.dart';
+import '../widgets/social_call_dialog.dart';
 
 class SocialFeedPage extends ConsumerStatefulWidget {
   const SocialFeedPage({super.key});
@@ -1515,59 +1516,8 @@ class _SocialCommentsPageState extends ConsumerState<SocialCommentsPage> {
 
 class SocialDMPage extends ConsumerWidget {
   const SocialDMPage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
-    if (auth == null) return const LoginRequiredPage();
-    final userId = auth.supabaseUid ?? auth.id;
-    return CustomerScaffold(
-      title: 'Messages',
-      showBack: true,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future:
-            ref.read(customerRepositoryProvider).socialConversations(userId),
-        builder: (context, snapshot) {
-          final rows = snapshot.data ?? [];
-          if (rows.isEmpty) {
-            return const EmptyState(
-                icon: Icons.send_rounded,
-                title: 'No conversations',
-                message: 'Start a conversation from a profile.');
-          }
-          return ListView(
-              padding: const EdgeInsets.all(16),
-              children: rows
-                  .map((c) => AppCard(
-                      onTap: () =>
-                          context.push('/app/social/messages/${c.s('id')}'),
-                      child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.chat_rounded),
-                          title: Text(c.s(
-                              'participantName',
-                              c.s('participant_name',
-                                  c.s('title', 'Conversation')))),
-                          subtitle: Text(() {
-                            final last = c.s(
-                                'lastMessage',
-                                c.s('last_message',
-                                    c.s('preview', c.s('message'))));
-                            final when = c['lastMessageAt'] ??
-                                c['last_message_at'] ??
-                                c['updated_at'] ??
-                                c['updatedAt'];
-                            final date = shortDate(when);
-                            if (last.isEmpty) return date;
-                            return date.isEmpty ? last : '$last · $date';
-                          }()))))
-                  .toList());
-        },
-      ),
-    );
-  }
+  @override Widget build(BuildContext context,WidgetRef ref){final auth=ref.watch(customerAuthStateProvider).valueOrNull;if(auth==null)return const LoginRequiredPage();final userId=auth.supabaseUid??auth.id;return CustomerScaffold(title:'Messages',showBack:true,child:FutureBuilder<List<Map<String,dynamic>>>(future:ref.read(customerRepositoryProvider).socialConversations(userId),builder:(context,snapshot){final rows=snapshot.data??[];return FutureBuilder<List<Map<String,dynamic>>>(future:ref.read(customerRepositoryProvider).socialCalls(),builder:(context,callsSnapshot){final incoming=(callsSnapshot.data??[]).where((c)=>c.s('status')=='ringing'&&c.s('callee_id')==userId).toList();if(rows.isEmpty&&incoming.isEmpty)return const EmptyState(icon:Icons.send_rounded,title:'No conversations',message:'Start a conversation from a profile.');return ListView(padding:const EdgeInsets.all(16),children:[...incoming.map((c)=>Padding(padding:const EdgeInsets.only(bottom:10),child:AppCard(child:ListTile(leading:const CircleAvatar(backgroundColor:Colors.green,child:Icon(Icons.call,color:Colors.white)),title:Text('Incoming ${c.s('call_type')} call'),subtitle:const Text('Tap to answer'),onTap:()=>showDialog<void>(context:context,barrierDismissible:false,builder:(_)=>SocialCallDialog(conversationId:c.s('conversation_id'),callType:c.s('call_type','audio'),incomingCall:c)))))),...rows.map((c)=>Padding(padding:const EdgeInsets.only(bottom:8),child:AppCard(onTap:()=>context.push('/app/social/messages/${c.s('id')}'),child:ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.chat_rounded),title:Text(c.s('participantName',c.s('participant_name',c.s('title','Conversation')))),subtitle:Text(c.s('lastMessage',c.s('last_message',c.s('preview',c.s('message')))))))))]);});}));}
 }
-
 class SocioDMChatPage extends ConsumerStatefulWidget {
   const SocioDMChatPage({required this.recipientId, super.key});
   final String recipientId;
@@ -1603,6 +1553,11 @@ class _SocioDMChatPageState extends ConsumerState<SocioDMChatPage> {
       showBack: true,
       child: Column(
         children: [
+          Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            IconButton.filledTonal(onPressed: () => showDialog<void>(context: context, barrierDismissible: false, builder: (_) => SocialCallDialog(conversationId: _conversationId ?? widget.recipientId, callType: 'audio')), icon: const Icon(Icons.call_rounded), tooltip: 'Audio call'),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(onPressed: () => showDialog<void>(context: context, barrierDismissible: false, builder: (_) => SocialCallDialog(conversationId: _conversationId ?? widget.recipientId, callType: 'video')), icon: const Icon(Icons.videocam_rounded), tooltip: 'Video call'),
+          ])),
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _messages,
@@ -2834,46 +2789,11 @@ class _SocialEditProfilePageState extends ConsumerState<SocialEditProfilePage> {
   }
 }
 
-class SocialCreatorDashboardPage extends StatelessWidget {
-  const SocialCreatorDashboardPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Creator Dashboard',
-      icon: Icons.dashboard_rounded,
-      message: 'Creator stats, post performance, and monetization tools.');
-}
-
-class SocialLivePage extends StatelessWidget {
-  const SocialLivePage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Live',
-      icon: Icons.live_tv_rounded,
-      message: 'Go live and interact with followers.');
-}
-
-class SocialBroadcastPage extends StatelessWidget {
-  const SocialBroadcastPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Broadcast Channels',
-      icon: Icons.campaign_rounded,
-      message: 'Create and manage broadcast updates.');
-}
-
-class SocialShopPage extends StatelessWidget {
-  const SocialShopPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Social Shop',
-      icon: Icons.shopping_bag_rounded,
-      message: 'Tag products and shop from creator posts.');
-}
-
+class _CreatorMetric extends StatelessWidget {const _CreatorMetric(this.label,this.value,this.icon);final String label,value;final IconData icon;@override Widget build(BuildContext context)=>SizedBox(width:110,child:AppCard(child:Column(children:[Icon(icon,color:AppColors.primary),const SizedBox(height:6),Text(value,style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold)),Text(label,style:const TextStyle(color:AppColors.muted))])));}class SocialCreatorDashboardPage extends ConsumerWidget { const SocialCreatorDashboardPage({super.key}); @override Widget build(BuildContext context,WidgetRef ref){final auth=ref.watch(customerAuthStateProvider).valueOrNull;if(auth==null)return const LoginRequiredPage();final id=auth.supabaseUid??auth.id;return CustomerScaffold(title:'Creator Dashboard',showBack:true,child:FutureBuilder<List<dynamic>>(future:Future.wait([ref.read(customerRepositoryProvider).socialProfile(id),ref.read(customerRepositoryProvider).socialUserPosts(id)]),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final profile=(s.data![0]??{})as Map<String,dynamic>,posts=s.data![1]as List<Map<String,dynamic>>;final likes=posts.fold<int>(0,(n,p)=>n+p.i('likeCount',p.i('like_count')));return ListView(padding:const EdgeInsets.all(16),children:[Wrap(spacing:10,runSpacing:10,children:[_CreatorMetric('Posts','${posts.length}',Icons.grid_on_rounded),_CreatorMetric('Followers','${profile.i('followerCount',profile.i('follower_count'))}',Icons.people_rounded),_CreatorMetric('Likes','$likes',Icons.favorite_rounded)]),const SectionHeader(title:'Recent performance'),...posts.take(5).map((p)=>Padding(padding:const EdgeInsets.only(bottom:8),child:SocialPostCard(post:p)))]);}));} }
+class _SocialCategoryPage extends ConsumerWidget {const _SocialCategoryPage(this.title,this.icon,this.predicate);final String title;final IconData icon;final bool Function(Map<String,dynamic>) predicate;@override Widget build(BuildContext context,WidgetRef ref)=>CustomerScaffold(title:title,showBack:true,child:FutureBuilder<List<Map<String,dynamic>>>(future:ref.read(customerRepositoryProvider).socialFeed(),builder:(context,s){if(s.connectionState==ConnectionState.waiting)return const Center(child:CircularProgressIndicator());final rows=(s.data??[]).where(predicate).toList();if(rows.isEmpty)return EmptyState(icon:icon,title:'Nothing here yet',message:'Relevant social activity will appear here.');return ListView(padding:const EdgeInsets.all(16),children:rows.map((p)=>Padding(padding:const EdgeInsets.only(bottom:10),child:SocialPostCard(post:p))).toList());}));}
+class SocialLivePage extends StatelessWidget {const SocialLivePage({super.key});@override Widget build(BuildContext context)=>_SocialCategoryPage('Live',Icons.live_tv_rounded,(p)=>p.s('category').toLowerCase()=='live');}
+class SocialBroadcastPage extends StatelessWidget {const SocialBroadcastPage({super.key});@override Widget build(BuildContext context)=>_SocialCategoryPage('Broadcast Channels',Icons.campaign_rounded,(p)=>p.s('category').toLowerCase()=='broadcast');}
+class SocialShopPage extends StatelessWidget {const SocialShopPage({super.key});@override Widget build(BuildContext context)=>_SocialCategoryPage('Social Shop',Icons.shopping_bag_rounded,(p)=>apiItems(p['linkedProducts']??p['linked_products']).isNotEmpty);}
 class SocialSettingsPage extends ConsumerStatefulWidget {
   const SocialSettingsPage({super.key});
 
@@ -3065,46 +2985,10 @@ class _SocialSettingsPageState extends ConsumerState<SocialSettingsPage> {
   }
 }
 
-class SocialPrivacyPage extends StatelessWidget {
-  const SocialPrivacyPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Privacy',
-      icon: Icons.privacy_tip_rounded,
-      message: 'Manage profile visibility, mentions, tags and blocking.');
-}
-
-class SocialSecurityPage extends StatelessWidget {
-  const SocialSecurityPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Security',
-      icon: Icons.security_rounded,
-      message: 'Review login sessions and account safety.');
-}
-
-class SocialNotificationSettingsPage extends StatelessWidget {
-  const SocialNotificationSettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Notification Settings',
-      icon: Icons.notifications_active_rounded,
-      message: 'Choose which Socio alerts you want to receive.');
-}
-
-class SocialHelpCenterPage extends StatelessWidget {
-  const SocialHelpCenterPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Help Center',
-      icon: Icons.help_center_rounded,
-      message: 'Find social safety, reporting and creator help.');
-}
-
+class SocialPrivacyPage extends StatelessWidget {const SocialPrivacyPage({super.key});@override Widget build(BuildContext context)=>const SocialSettingsPage();}
+class SocialSecurityPage extends StatelessWidget {const SocialSecurityPage({super.key});@override Widget build(BuildContext context)=>CustomerScaffold(title:'Security',showBack:true,child:ListView(padding:const EdgeInsets.all(16),children:[const AppCard(child:ListTile(leading:Icon(Icons.shield_rounded),title:Text('OTP-only account protection'),subtitle:Text('Sign-in uses verified one-time passwords. Password and Google authentication controls are intentionally unavailable.'))),const SizedBox(height:12),FilledButton.icon(onPressed:()=>context.push('/app/account-control'),icon:const Icon(Icons.manage_accounts_rounded),label:const Text('Account controls'))]));}
+class SocialNotificationSettingsPage extends StatelessWidget {const SocialNotificationSettingsPage({super.key});@override Widget build(BuildContext context)=>const SocialSettingsPage();}
+class SocialHelpCenterPage extends StatelessWidget {const SocialHelpCenterPage({super.key});@override Widget build(BuildContext context)=>const CustomerSupportPage();}
 class SocialSuggestionsPage extends ConsumerWidget {
   const SocialSuggestionsPage({super.key});
 
@@ -3136,16 +3020,7 @@ class SocialSuggestionsPage extends ConsumerWidget {
   }
 }
 
-class SocialFriendsPage extends StatelessWidget {
-  const SocialFriendsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => const _SocialPlaceholder(
-      title: 'Friends',
-      icon: Icons.people_alt_rounded,
-      message: 'Your friends and close connections.');
-}
-
+class SocialFriendsPage extends ConsumerWidget {const SocialFriendsPage({super.key});@override Widget build(BuildContext context,WidgetRef ref){final auth=ref.watch(customerAuthStateProvider).valueOrNull;if(auth==null)return const LoginRequiredPage();final id=auth.supabaseUid??auth.id;return CustomerScaffold(title:'Friends',showBack:true,child:FutureBuilder<List<dynamic>>(future:Future.wait([ref.read(customerRepositoryProvider).socialFollowers(id),ref.read(customerRepositoryProvider).socialFollowing(id)]),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final followers=s.data![0]as List<Map<String,dynamic>>,following=s.data![1]as List<Map<String,dynamic>>,seen=<String>{};final rows=[...followers,...following].where((x)=>seen.add(x.s('userId',x.s('user_id',x.s('id'))))).toList();if(rows.isEmpty)return const EmptyState(icon:Icons.people_alt_rounded,title:'No connections yet',message:'Follow people to build your social network.');return ListView(padding:const EdgeInsets.all(16),children:rows.map((u)=>Padding(padding:const EdgeInsets.only(bottom:8),child:AppCard(child:_ProfileRow(profile:u)))).toList());}));}}
 class SocialUserPostsPage extends ConsumerWidget {
   const SocialUserPostsPage(
       {required this.userId, required this.postId, super.key});

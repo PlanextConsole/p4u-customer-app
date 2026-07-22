@@ -225,6 +225,17 @@ class CustomerApi {
       _api.getJson('/api/v1/commerce/orders/$orderId', auth: true);
   Future<Map<String, dynamic>> cancelOrder(String orderId) =>
       _api.postJson('/api/v1/commerce/orders/$orderId/cancel', auth: true);
+  Future<Map<String, dynamic>> productTracking(String orderId) =>
+      _api.getJson('/api/v1/commerce/orders/$orderId/tracking', auth: true);
+
+  Future<Map<String, dynamic>> confirmProductDelivery(String orderId) =>
+      _api.postJson('/api/v1/commerce/orders/$orderId/confirm-delivery',
+          body: const {}, auth: true);
+
+  Future<Map<String, dynamic>> requestProductReturn(
+          String orderId, String reason) =>
+      _api.postJson('/api/v1/commerce/orders/$orderId/returns',
+          body: {'reason': reason}, auth: true);
   Future<Map<String, dynamic>> checkoutQuote(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/checkout/quote', body: body, auth: true);
   Future<Map<String, dynamic>> validateCoupon(Map<String, dynamic> body) => _api
@@ -238,6 +249,19 @@ class CustomerApi {
       _api.postJson('/api/v1/commerce/bookings/$bookingId/cancel', auth: true);
   Future<List<Map<String, dynamic>>> vendorBookingsFromCommerce() =>
       _api.getList('/api/v1/commerce/bookings/vendor', auth: true);
+  Future<Map<String, dynamic>> serviceCompletionOtp(String bookingId) =>
+      _api.getJson('/api/v1/commerce/bookings/$bookingId/completion-otp',
+          auth: true);
+  Future<Map<String, dynamic>> confirmServiceCompletion(
+          String bookingId, bool accept, {String? reason}) =>
+      _api.postJson(
+          '/api/v1/commerce/bookings/$bookingId/completion-confirmation',
+          body: {'accept': accept, if (reason != null) 'reason': reason},
+          auth: true);
+  Future<Map<String, dynamic>> disputeService(
+          String bookingId, String reason) =>
+      _api.postJson('/api/v1/commerce/bookings/$bookingId/disputes',
+          body: {'reason': reason}, auth: true);
   Future<List<Map<String, dynamic>>> availableSlots(
       {String? vendorId, String? serviceId, String? date}) async {
     final data = await _api.getJson('/api/v1/commerce/bookings/available-slots',
@@ -249,6 +273,35 @@ class CustomerApi {
     return apiItems(body);
   }
 
+  Future<List<Map<String, dynamic>>> properties(
+          {String? query, String? type}) =>
+      _api.getList('/api/v1/commerce/properties',
+          query: {'q': query, 'type': type, 'limit': 100}, auth: true);
+  Future<Map<String, dynamic>> property(String id) =>
+      _api.getJson('/api/v1/commerce/properties/$id', auth: true);
+  Future<Map<String, dynamic>> createProperty(Map<String, dynamic> body) =>
+      _api.postJson('/api/v1/commerce/properties', body: body, auth: true);
+  Future<List<Map<String, dynamic>>> myProperties() =>
+      _api.getList('/api/v1/commerce/properties/mine', auth: true);
+  Future<Map<String, dynamic>> inquireProperty(String id, String message) =>
+      _api.postJson('/api/v1/commerce/properties/$id/inquiries',
+          body: {'message': message}, auth: true);
+  Future<List<Map<String, dynamic>>> propertyMessages() =>
+      _api.getList('/api/v1/commerce/property-messages', auth: true);
+  Future<List<Map<String, dynamic>>> propertySavedSearches() =>
+      _api.getList('/api/v1/commerce/property-saved-searches', auth: true);
+  Future<Map<String, dynamic>> savePropertySearch(Map<String, dynamic> body) =>
+      _api.postJson('/api/v1/commerce/property-saved-searches',
+          body: body, auth: true);
+  Future<List<Map<String, dynamic>>> propertyRentTrackers() =>
+      _api.getList('/api/v1/commerce/property-rent-trackers', auth: true);
+  Future<Map<String, dynamic>> savePropertyRentTracker(
+          Map<String, dynamic> body) =>
+      _api.putJson('/api/v1/commerce/property-rent-trackers',
+          body: body, auth: true);
+  Future<Map<String, dynamic>> estimateProperty(Map<String, dynamic> body) =>
+      _api.postJson('/api/v1/commerce/properties/estimate',
+          body: body, auth: true);
   Future<Map<String, dynamic>> createReview(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/reviews', body: body, auth: true);
   Future<List<Map<String, dynamic>>> reviews(
@@ -438,4 +491,26 @@ class CustomerApi {
       _api.deleteJson('/api/v1/social/media/$mediaId', auth: true);
   String publicSocialMediaFileUrl(String mediaId) =>
       '${ApiClient.baseUrl}/socio-uploads/media/$mediaId';
+  Future<List<Map<String, dynamic>>> supportTickets() =>
+      _api.getList('/api/v1/commerce/support/tickets', auth: true);
+  Future<Map<String, dynamic>> createSupportTicket(Map<String, dynamic> body) =>
+      _api.postJson('/api/v1/commerce/support/tickets', body: body, auth: true);
+  Future<Map<String, dynamic>> supportTicket(String id) =>
+      _api.getJson('/api/v1/commerce/support/tickets/$id', auth: true);
+  Future<Map<String, dynamic>> sendSupportMessage(String id, String message) =>
+      _api.postJson('/api/v1/commerce/support/tickets/$id/messages', body: {'message': message}, auth: true);
+  Future<Map<String, dynamic>> closeSupportTicket(String id) =>
+      _api.patchJson('/api/v1/commerce/support/tickets/$id/close', body: const {}, auth: true);
+  Future<List<Map<String, dynamic>>> socialCalls() =>
+      _api.getList('/api/v1/social/calls', auth: true);
+  Future<Map<String, dynamic>> socialCall(String id) =>
+      _api.getJson('/api/v1/social/calls/$id', auth: true);
+  Future<Map<String, dynamic>> startSocialCall(String conversationId, String type, {String? offerSdp}) =>
+      _api.postJson('/api/v1/social/calls', body: {'conversationId': conversationId, 'type': type, 'offerSdp': offerSdp, 'idempotencyKey': '${DateTime.now().microsecondsSinceEpoch}'}, auth: true);
+  Future<Map<String, dynamic>> acceptSocialCall(String id, {String? answerSdp}) =>
+      _api.postJson('/api/v1/social/calls/$id/accept', body: {'answerSdp': answerSdp}, auth: true);
+  Future<Map<String, dynamic>> rejectSocialCall(String id) =>
+      _api.postJson('/api/v1/social/calls/$id/reject', body: const {}, auth: true);
+  Future<Map<String, dynamic>> endSocialCall(String id) =>
+      _api.postJson('/api/v1/social/calls/$id/end', body: const {}, auth: true);
 }

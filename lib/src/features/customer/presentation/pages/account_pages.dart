@@ -1075,6 +1075,35 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
                           style: const TextStyle(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w900)),
+                      if (status == 'completion_pending') ...[
+                        const SizedBox(height: 12),
+                        FilledButton.tonalIcon(
+                            onPressed: () =>
+                                _showCompletionOtp(booking.s('id')),
+                            icon: const Icon(Icons.password_rounded),
+                            label: const Text('Show completion OTP')),
+                      ],
+                      if (status == 'completion_pending_confirmation') ...[
+                        const SizedBox(height: 12),
+                        Wrap(spacing: 8, children: [
+                          FilledButton.icon(
+                              onPressed: () => _confirmService(booking.s('id')),
+                              icon: const Icon(Icons.check_circle_outline),
+                              label: const Text('Confirm service')),
+                          OutlinedButton.icon(
+                              onPressed: () => _disputeService(booking.s('id'),
+                                  pending: true),
+                              icon: const Icon(Icons.report_problem_outlined),
+                              label: const Text('Dispute')),
+                        ]),
+                      ],
+                      if (status == 'completed') ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                            onPressed: () => _disputeService(booking.s('id')),
+                            icon: const Icon(Icons.report_problem_outlined),
+                            label: const Text('Report issue')),
+                      ],
                       if (canCancel) ...[
                         const SizedBox(height: 12),
                         Align(
@@ -1109,6 +1138,81 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
         },
       ),
     );
+  }
+
+  void _refreshBookings() {
+    final id = _customerId;
+    if (id == null) return;
+    setState(() => _future = ref.read(customerRepositoryProvider).bookings(id));
+  }
+
+  Future<void> _showCompletionOtp(String bookingId) async {
+    try {
+      final data = await ref
+          .read(customerRepositoryProvider)
+          .serviceCompletionOtp(bookingId);
+      if (!mounted) return;
+      await showDialog<void>(
+          context: context,
+          builder: (_) => AlertDialog(
+                  title: const Text('Completion OTP'),
+                  content: SelectableText(data.s('otp'),
+                      style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 8)),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Close'))
+                  ]));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Future<void> _confirmService(String bookingId) async {
+    await ref
+        .read(customerRepositoryProvider)
+        .confirmServiceCompletion(bookingId, true);
+    _refreshBookings();
+  }
+
+  Future<void> _disputeService(String bookingId, {bool pending = false}) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+                title: const Text('Report service issue'),
+                content: TextField(
+                    controller: controller,
+                    minLines: 3,
+                    maxLines: 5,
+                    decoration: const InputDecoration(labelText: 'Reason')),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(context, controller.text.trim()),
+                      child: const Text('Submit'))
+                ]));
+    controller.dispose();
+    if (reason == null || reason.length < 5) return;
+    if (pending) {
+      await ref
+          .read(customerRepositoryProvider)
+          .confirmServiceCompletion(bookingId, false, reason: reason);
+    } else {
+      await ref
+          .read(customerRepositoryProvider)
+          .disputeService(bookingId, reason);
+    }
+    _refreshBookings();
   }
 }
 
@@ -1466,6 +1570,19 @@ class _CustomerSupportPageState extends ConsumerState<CustomerSupportPage> {
   final _subject = TextEditingController();
   final _message = TextEditingController();
 
+  Future<void> _openTicket(Map<String, dynamic> ticket) async {
+    var detail = await ref.read(customerRepositoryProvider).supportTicket(ticket.s('id'));
+    if (!mounted) return;
+    final reply = TextEditingController();
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, update) {
+      final messages = apiItems(detail['messages']);
+      final terminal = ['closed', 'resolved'].contains(detail.s('status'));
+      return AlertDialog(title: Text(detail.s('subject')), content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(child: ListView(shrinkWrap: true, children: messages.map((m) => Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: m.s('sender_type') == 'admin' ? Colors.teal.shade50 : Colors.grey.shade100, borderRadius: BorderRadius.circular(10)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(m.s('sender_type') == 'admin' ? 'Support' : 'You', style: const TextStyle(fontWeight: FontWeight.bold)), Text(m.s('message'))]))).toList())),
+        if (!terminal) Row(children: [Expanded(child: TextField(controller: reply, decoration: const InputDecoration(hintText: 'Reply to support'))), IconButton(onPressed: () async { if (reply.text.trim().length < 2) return; detail = await ref.read(customerRepositoryProvider).sendSupportMessage(detail.s('id'), reply.text.trim()); reply.clear(); update(() {}); setState(() {}); }, icon: const Icon(Icons.send_rounded))])
+      ])), actions: [if (!terminal) TextButton(onPressed: () async { detail = await ref.read(customerRepositoryProvider).closeSupportTicket(detail.s('id')); update(() {}); setState(() {}); }, child: const Text('Close ticket')), TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))]);
+    }));
+  }
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
@@ -1535,13 +1652,13 @@ class _CustomerSupportPageState extends ConsumerState<CustomerSupportPage> {
                       .map((ticket) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
-                              child: Row(children: [
-                            Expanded(
-                                child: Text(ticket.s('subject'),
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w800))),
-                            StatusBadge(ticket.s('status', 'open'))
-                          ]))))
+                              child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(ticket.s('subject'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                            subtitle: Text('${ticket.s('category')} · ${ticket.s('priority')}'),
+                            trailing: StatusBadge(ticket.s('status', 'open')),
+                            onTap: () => _openTicket(ticket),
+                          ))))
                       .toList());
             },
           ),
