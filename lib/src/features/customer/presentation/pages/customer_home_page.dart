@@ -82,6 +82,7 @@ class _HomeHeader extends StatelessWidget {
     ('Services', '/app/services'),
     ('Find Home', '/app/find-home'),
     ('Classified', '/app/classifieds'),
+    ('Food', '/app/food'),
   ];
 
   @override
@@ -1651,6 +1652,7 @@ class _ReferenceBottomNav extends StatelessWidget {
     ('Services', Icons.handyman_outlined, '/app/services'),
     ('Find Home', Icons.apartment_outlined, '/app/find-home'),
     ('Classified', Icons.newspaper_outlined, '/app/classifieds'),
+    ('Food', Icons.restaurant_outlined, '/app/food'),
   ];
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -1695,29 +1697,6 @@ class _ReferenceBottomNav extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (i == 4)
-                          Positioned(
-                            top: 3,
-                            right: 2,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF5A818),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text(
-                                'SOON',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 6,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),

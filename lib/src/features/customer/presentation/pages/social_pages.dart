@@ -200,6 +200,8 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
   bool _saveBusy = false;
   bool _followBusy = false;
   bool _shareBusy = false;
+  bool _deleteBusy = false;
+  bool _deleted = false;
 
   @override
   void initState() {
@@ -268,6 +270,7 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
         : commentPermission == 'followers'
             ? (_following || isSelf)
             : true;
+    if (_deleted) return const SizedBox.shrink();
     return AppCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -306,9 +309,16 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
                                 : AppColors.primary)),
                   ),
                 IconButton(
-                    onPressed: () =>
-                        context.push('/app/social/post/${post.s('id')}'),
-                    icon: const Icon(Icons.more_horiz_rounded)),
+                    onPressed: _deleteBusy
+                        ? null
+                        : () => _openPostActions(
+                            postId: postId, isSelf: isSelf),
+                    icon: _deleteBusy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.more_horiz_rounded)),
               ],
             ),
           ),
@@ -420,6 +430,71 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
     );
   }
 
+  Future<void> _openPostActions({
+    required String postId,
+    required bool isSelf,
+  }) async {
+    if (!isSelf) {
+      if (mounted) context.push('/app/social/post/$postId');
+      return;
+    }
+    final delete = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new_rounded),
+              title: const Text('View post'),
+              onTap: () => Navigator.pop(sheetContext, false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded,
+                  color: Colors.red),
+              title: const Text('Delete your upload',
+                  style: TextStyle(color: Colors.red)),
+              subtitle: const Text(
+                  'This removes the photo, video or reel permanently.'),
+              onTap: () => Navigator.pop(sheetContext, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (delete != true || !mounted) {
+      if (delete == false && mounted) context.push('/app/social/post/$postId');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete upload?'),
+        content: const Text('Only your own upload can be deleted. This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleteBusy = true);
+    try {
+      await ref.read(customerRepositoryProvider).deleteSocialPost(postId);
+      if (mounted) setState(() => _deleted = true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete upload: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleteBusy = false);
+    }
+  }
   Future<void> _toggleFollow(String userId) async {
     if (userId.isEmpty || _followBusy) return;
     final repo = ref.read(customerRepositoryProvider);
@@ -2387,11 +2462,34 @@ class _SocialStoryViewerPageState extends ConsumerState<SocialStoryViewerPage> {
   }
 
   Future<void> _delete() async {
+    if (!_isMine) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete story?'),
+        content: const Text('This removes your uploaded story permanently.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     final seg = _segments[_index];
     try {
       await ref.read(customerRepositoryProvider).deleteSocialStory(seg.s('id'));
       if (mounted) context.pop();
-    } catch (_) {}
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete story: $error')),
+        );
+      }
+    }
   }
 
   @override
@@ -3060,10 +3158,15 @@ class _SocialQuickNav extends StatelessWidget {
   Widget build(BuildContext context) {
     // Web parity: no Live/Shop/Channels/Dashboard in Socio nav.
     final items = [
-      ('Explore', Icons.search_rounded, '/app/social/explore'),
-      ('Reels', Icons.movie_rounded, '/app/social/reels'),
-      ('Friends', Icons.people_rounded, '/app/social/friends'),
-      ('Saved', Icons.bookmark_border_rounded, '/app/social/saved'),
+      ('Socio Home', Icons.home_outlined, '/app/social'),
+      ('Explore', Icons.explore_outlined, '/app/social/explore'),
+      ('Reels', Icons.movie_outlined, '/app/social/reels'),
+      ('Messages', Icons.chat_bubble_outline_rounded, '/app/social/messages'),
+      ('Friends', Icons.people_outline_rounded, '/app/social/friends'),
+      ('Notification', Icons.notifications_none_rounded, '/app/social/notifications'),
+      ('Create', Icons.add_circle_outline_rounded, '/app/social/create'),
+      ('Settings', Icons.settings_outlined, '/app/social/settings'),
+      ('Profile', Icons.person_outline_rounded, '/app/social/profile'),
     ];
     return SizedBox(
       height: 74,

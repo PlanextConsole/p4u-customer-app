@@ -810,7 +810,10 @@ class _CustomerProfileEditPageState
       _snack('Address saved');
       setState(() => _reloadAddresses(customerId));
     } catch (e) {
-      _snack('Could not save address. Please try again.');
+      final message = e.toString().replaceFirst('ApiException: ', '').trim();
+      _snack(message.isEmpty
+          ? 'Could not save address. Please try again.'
+          : 'Could not save address: $message');
     } finally {
       if (mounted) setState(() => _addressLoading = false);
     }

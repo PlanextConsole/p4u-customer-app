@@ -2460,14 +2460,15 @@ class _CustomerOrderDetailPageState
 
   Future<(Map<String, dynamic>?, Map<String, dynamic>?)> _load() async {
     final repo = ref.read(customerRepositoryProvider);
-    final results = await Future.wait<Object?>([
-      repo.order(widget.orderId),
-      repo.productTracking(widget.orderId),
-    ]);
-    return (
-      results[0] as Map<String, dynamic>?,
-      results[1] as Map<String, dynamic>?,
-    );
+    final order = await repo.order(widget.orderId);
+    Map<String, dynamic>? tracking;
+    try {
+      tracking = await repo.productTracking(widget.orderId);
+    } catch (_) {
+      // Tracking is supplementary. A legacy order or temporarily unavailable
+      // tracking endpoint must not make an otherwise valid order disappear.
+    }
+    return (order, tracking);
   }
 
   Future<void> _confirmDelivery() async {

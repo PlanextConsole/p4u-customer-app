@@ -895,9 +895,9 @@ class CustomerRepository {
   Future<Map<String, dynamic>> closeSupportTicket(String id) =>
       _gateway.closeSupportTicket(id);
   Future<List<Map<String, dynamic>>> properties(
-          {String? transactionType, String? search}) =>
-      _gateway.properties(query: search, type: transactionType);
-
+          {String? transactionType, String? propertyType, String? search}) =>
+      _gateway.properties(
+          query: search, type: transactionType, propertyType: propertyType);
   Future<Map<String, dynamic>?> property(String id) async =>
       _gateway.property(id);
 
@@ -907,6 +907,13 @@ class CustomerRepository {
   }
 
   Future<List<Map<String, dynamic>>> myProperties() => _gateway.myProperties();
+  Future<void> updateProperty(String id, Map<String, dynamic> data) async {
+    await _gateway.updateProperty(id, data);
+  }
+
+  Future<void> deleteProperty(String id) async {
+    await _gateway.deleteProperty(id);
+  }
 
   Future<void> inquireProperty(String propertyId, String message) async {
     await _gateway.inquireProperty(propertyId, message);
@@ -1291,6 +1298,7 @@ class CustomerRepository {
     return _gateway.conversationMessages(conversationId);
   }
 
+  Future<void> deleteSocialPost(String postId) => _gateway.deletePost(postId);
   Future<void> likeSocialPost(String postId) => _gateway.likePost(postId);
   Future<void> unlikeSocialPost(String postId) => _gateway.unlikePost(postId);
   Future<void> saveSocialPost(String postId) => _gateway.savePost(postId);
@@ -2257,20 +2265,25 @@ class CustomerRepository {
         'is_default': row['is_default'] ?? row['isDefault'] ?? false,
       };
 
-  Map<String, dynamic> _addressPayload(Map<String, dynamic> address) => {
-        'label': address.s('label', address.s('name', 'Home')),
-        'fullName': address.s('fullName', address.s('name', 'Customer')),
-        'phone': address.s('phone', address.s('mobile')),
-        'addressLine1': address.s('line1', address.s('address_line')),
-        'addressLine2': address.s('line2'),
-        'city': address.s('city'),
-        'state': address.s('state'),
-        'postalCode': address.s('pincode', address.s('postalCode')),
-        'country': address.s('country', 'India'),
-        'latitude': address['latitude'],
-        'longitude': address['longitude'],
-        'isDefault': address['is_default'] ?? address['isDefault'] ?? false,
-      };
+  Map<String, dynamic> _addressPayload(Map<String, dynamic> address) {
+    final line2 = address.s('line2').trim();
+    final latitude = address['latitude'];
+    final longitude = address['longitude'];
+    return {
+      'label': address.s('label', address.s('name', 'Home')).trim(),
+      'fullName': address.s('fullName', address.s('name', 'Customer')).trim(),
+      'phone': address.s('phone', address.s('mobile')).trim(),
+      'addressLine1': address.s('line1', address.s('address_line')).trim(),
+      'addressLine2': line2.isEmpty ? null : line2,
+      'city': address.s('city').trim(),
+      'state': address.s('state').trim(),
+      'postalCode': address.s('pincode', address.s('postalCode')).trim(),
+      'country': address.s('country', 'India').trim(),
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      'isDefault': address['is_default'] ?? address['isDefault'] ?? false,
+    };
+  }
 
   Map<String, String> _assetMap(Map<String, dynamic> home) {
     final assets = <String, String>{};

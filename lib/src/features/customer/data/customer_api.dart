@@ -274,15 +274,26 @@ class CustomerApi {
   }
 
   Future<List<Map<String, dynamic>>> properties(
-          {String? query, String? type}) =>
+          {String? query, String? type, String? propertyType}) =>
       _api.getList('/api/v1/commerce/properties',
-          query: {'q': query, 'type': type, 'limit': 100}, auth: true);
+          query: {
+            'q': query,
+            'type': type,
+            'propertyType': propertyType,
+            'limit': 100
+          },
+          auth: true);
   Future<Map<String, dynamic>> property(String id) =>
       _api.getJson('/api/v1/commerce/properties/$id', auth: true);
   Future<Map<String, dynamic>> createProperty(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/properties', body: body, auth: true);
   Future<List<Map<String, dynamic>>> myProperties() =>
       _api.getList('/api/v1/commerce/properties/mine', auth: true);
+  Future<Map<String, dynamic>> updateProperty(
+          String id, Map<String, dynamic> body) =>
+      _api.patchJson('/api/v1/commerce/properties/$id', body: body, auth: true);
+  Future<Map<String, dynamic>> deleteProperty(String id) =>
+      _api.deleteJson('/api/v1/commerce/properties/$id', auth: true);
   Future<Map<String, dynamic>> inquireProperty(String id, String message) =>
       _api.postJson('/api/v1/commerce/properties/$id/inquiries',
           body: {'message': message}, auth: true);
@@ -498,19 +509,32 @@ class CustomerApi {
   Future<Map<String, dynamic>> supportTicket(String id) =>
       _api.getJson('/api/v1/commerce/support/tickets/$id', auth: true);
   Future<Map<String, dynamic>> sendSupportMessage(String id, String message) =>
-      _api.postJson('/api/v1/commerce/support/tickets/$id/messages', body: {'message': message}, auth: true);
+      _api.postJson('/api/v1/commerce/support/tickets/$id/messages',
+          body: {'message': message}, auth: true);
   Future<Map<String, dynamic>> closeSupportTicket(String id) =>
-      _api.patchJson('/api/v1/commerce/support/tickets/$id/close', body: const {}, auth: true);
+      _api.patchJson('/api/v1/commerce/support/tickets/$id/close',
+          body: const {}, auth: true);
   Future<List<Map<String, dynamic>>> socialCalls() =>
       _api.getList('/api/v1/social/calls', auth: true);
   Future<Map<String, dynamic>> socialCall(String id) =>
       _api.getJson('/api/v1/social/calls/$id', auth: true);
-  Future<Map<String, dynamic>> startSocialCall(String conversationId, String type, {String? offerSdp}) =>
-      _api.postJson('/api/v1/social/calls', body: {'conversationId': conversationId, 'type': type, 'offerSdp': offerSdp, 'idempotencyKey': '${DateTime.now().microsecondsSinceEpoch}'}, auth: true);
-  Future<Map<String, dynamic>> acceptSocialCall(String id, {String? answerSdp}) =>
-      _api.postJson('/api/v1/social/calls/$id/accept', body: {'answerSdp': answerSdp}, auth: true);
-  Future<Map<String, dynamic>> rejectSocialCall(String id) =>
-      _api.postJson('/api/v1/social/calls/$id/reject', body: const {}, auth: true);
+  Future<Map<String, dynamic>> startSocialCall(
+          String conversationId, String type,
+          {String? offerSdp}) =>
+      _api.postJson('/api/v1/social/calls',
+          body: {
+            'conversationId': conversationId,
+            'type': type,
+            'offerSdp': offerSdp,
+            'idempotencyKey': '${DateTime.now().microsecondsSinceEpoch}'
+          },
+          auth: true);
+  Future<Map<String, dynamic>> acceptSocialCall(String id,
+          {String? answerSdp}) =>
+      _api.postJson('/api/v1/social/calls/$id/accept',
+          body: {'answerSdp': answerSdp}, auth: true);
+  Future<Map<String, dynamic>> rejectSocialCall(String id) => _api
+      .postJson('/api/v1/social/calls/$id/reject', body: const {}, auth: true);
   Future<Map<String, dynamic>> endSocialCall(String id) =>
       _api.postJson('/api/v1/social/calls/$id/end', body: const {}, auth: true);
 }

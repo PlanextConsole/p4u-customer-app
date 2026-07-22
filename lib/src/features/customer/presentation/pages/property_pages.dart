@@ -24,6 +24,7 @@ class PropertyHomePage extends ConsumerStatefulWidget {
 class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
   final _search = TextEditingController();
   String _type = '';
+  String _propertyType = '';
   late Future<List<Map<String, dynamic>>> _future;
 
   @override
@@ -33,9 +34,11 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
   }
 
   void _load() {
-    _future = ref
-        .read(customerRepositoryProvider)
-        .properties(transactionType: _type, search: _search.text.trim());
+    _future = ref.read(customerRepositoryProvider).properties(
+          transactionType: _type,
+          propertyType: _propertyType,
+          search: _search.text.trim(),
+        );
   }
 
   @override
@@ -87,6 +90,28 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                           _type = 'rent';
                           _load();
                         })),
+                PopupMenuButton<String>(
+                  tooltip: 'Property type',
+                  initialValue: _propertyType,
+                  onSelected: (value) => setState(() {
+                    _propertyType = value;
+                    _load();
+                  }),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: '', child: Text('All property types')),
+                    PopupMenuItem(value: 'Apartment', child: Text('Apartment')),
+                    PopupMenuItem(value: 'House', child: Text('House')),
+                    PopupMenuItem(value: 'Plot', child: Text('Plot')),
+                    PopupMenuItem(
+                        value: 'Commercial', child: Text('Commercial')),
+                  ],
+                  child: Chip(
+                    avatar: const Icon(Icons.apartment_rounded, size: 18),
+                    label: Text(_propertyType.isEmpty
+                        ? 'Property type'
+                        : _propertyType),
+                  ),
+                ),
                 ActionChip(
                     label: const Text('Save search'),
                     onPressed: () async {
@@ -96,7 +121,11 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                         'name': _search.text.trim().isEmpty
                             ? 'Property search'
                             : _search.text.trim(),
-                        'query': {'q': _search.text.trim(), 'type': _type},
+                        'query': {
+                          'q': _search.text.trim(),
+                          'type': _type,
+                          'propertyType': _propertyType,
+                        },
                         'notify': true
                       });
                       if (mounted) {
@@ -111,6 +140,21 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                     label: const Text('Estimate'),
                     onPressed: () =>
                         context.push('/app/find-home/value-estimator')),
+                ActionChip(
+                    label: const Text('My properties'),
+                    onPressed: () =>
+                        context.push('/app/find-home/my-properties')),
+                ActionChip(
+                    label: const Text('Saved'),
+                    onPressed: () =>
+                        context.push('/app/find-home/saved-searches')),
+                ActionChip(
+                    label: const Text('Messages'),
+                    onPressed: () => context.push('/app/find-home/messages')),
+                ActionChip(
+                    label: const Text('Rent tracker'),
+                    onPressed: () =>
+                        context.push('/app/find-home/rent-tracker')),
               ],
             ),
             const SizedBox(height: 14),
@@ -121,6 +165,13 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                   return const SizedBox(
                       height: 300,
                       child: Center(child: CircularProgressIndicator()));
+                }
+                if (snapshot.hasError) {
+                  return EmptyState(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load properties',
+                    message: snapshot.error.toString(),
+                  );
                 }
                 final properties = snapshot.data ?? [];
                 if (properties.isEmpty) {
@@ -248,8 +299,72 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
   final _city = TextEditingController();
   final _locality = TextEditingController();
   final _area = TextEditingController();
+  final _bhk = TextEditingController();
+  final _image = TextEditingController();
   final _description = TextEditingController();
   String _type = 'sale';
+  String _propertyType = 'Apartment';
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _price.dispose();
+    _city.dispose();
+    _locality.dispose();
+    _area.dispose();
+    _bhk.dispose();
+    _image.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(String customerId) async {
+    final title = _title.text.trim();
+    final price = num.tryParse(_price.text.trim()) ?? 0;
+    if (title.length < 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Enter a title with at least 5 characters.')),
+      );
+      return;
+    }
+    if (price <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid property price.')),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      await ref.read(customerRepositoryProvider).createProperty(customerId, {
+        'title': title,
+        'transaction_type': _type,
+        'price': price,
+        'city': _city.text.trim(),
+        'locality': _locality.text.trim(),
+        'area_sqft': int.tryParse(_area.text.trim()) ?? 0,
+        'bhk': int.tryParse(_bhk.text.trim()) ?? 0,
+        'description': _description.text.trim(),
+        'property_type': _propertyType,
+        'posted_by': 'Owner',
+        'images': [if (_image.text.trim().isNotEmpty) _image.text.trim()],
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Property submitted for review.')),
+      );
+      context.go('/app/find-home');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit property. $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +387,24 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
                   selected: {_type},
                   onSelectionChanged: (value) =>
                       setState(() => _type = value.first),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _propertyType,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.apartment_rounded),
+                    labelText: 'Property type',
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'Apartment', child: Text('Apartment')),
+                    DropdownMenuItem(value: 'House', child: Text('House')),
+                    DropdownMenuItem(value: 'Plot', child: Text('Plot')),
+                    DropdownMenuItem(
+                        value: 'Commercial', child: Text('Commercial')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _propertyType = value ?? _propertyType),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -309,6 +442,20 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
                         hintText: 'Area sqft')),
                 const SizedBox(height: 12),
                 TextField(
+                    controller: _bhk,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.bed_rounded), hintText: 'BHK')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: _image,
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.image_outlined),
+                        hintText: 'Image URL (optional)')),
+                const SizedBox(height: 12),
+                TextField(
                     controller: _description,
                     minLines: 4,
                     maxLines: 6,
@@ -317,24 +464,14 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
                         hintText: 'Description')),
                 const SizedBox(height: 14),
                 FilledButton.icon(
-                  onPressed: () async {
-                    await ref
-                        .read(customerRepositoryProvider)
-                        .createProperty(auth.id, {
-                      'title': _title.text.trim(),
-                      'transaction_type': _type,
-                      'price': num.tryParse(_price.text.trim()) ?? 0,
-                      'city': _city.text.trim(),
-                      'locality': _locality.text.trim(),
-                      'area_sqft': int.tryParse(_area.text.trim()) ?? 0,
-                      'description': _description.text.trim(),
-                      'property_type': 'apartment',
-                      'posted_by': 'owner',
-                    });
-                    if (context.mounted) context.go('/app/find-home');
-                  },
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text('Submit Listing'),
+                  onPressed: _submitting ? null : () => _submit(auth.id),
+                  icon: _submitting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                  label: Text(_submitting ? 'Submitting...' : 'Submit Listing'),
                 ),
               ],
             ),
@@ -421,37 +558,208 @@ class _PropertyEMIPageState extends State<PropertyEMIPage> {
   }
 }
 
-class MyPropertiesPage extends ConsumerWidget {
+class MyPropertiesPage extends ConsumerStatefulWidget {
   const MyPropertiesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyPropertiesPage> createState() => _MyPropertiesPageState();
+}
+
+class _MyPropertiesPageState extends ConsumerState<MyPropertiesPage> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(customerRepositoryProvider).myProperties();
+  }
+
+  void _reload() {
+    setState(() {
+      _future = ref.read(customerRepositoryProvider).myProperties();
+    });
+  }
+
+  Future<void> _edit(Map<String, dynamic> property) async {
+    final title = TextEditingController(text: property.s('title'));
+    final price = TextEditingController(text: property.s('price'));
+    final update = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit property'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+                controller: title,
+                decoration: const InputDecoration(labelText: 'Title')),
+            const SizedBox(height: 12),
+            TextField(
+              controller: price,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Price'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'title': title.text.trim(),
+              'price': num.tryParse(price.text.trim()) ?? 0,
+            }),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    title.dispose();
+    price.dispose();
+    if (update == null) return;
+    try {
+      await ref
+          .read(customerRepositoryProvider)
+          .updateProperty(property.s('id'), update);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Property updated and submitted for review.')),
+      );
+      _reload();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update property. $error')),
+      );
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> property) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete property?'),
+        content: Text('Delete "${property.s('title', 'this property')}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref
+          .read(customerRepositoryProvider)
+          .deleteProperty(property.s('id'));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Property deleted.')),
+      );
+      _reload();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete property. $error')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     if (auth == null) return const LoginRequiredPage();
     return CustomerScaffold(
       title: 'My Properties',
       showBack: true,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: ref.read(customerRepositoryProvider).myProperties(),
-        builder: (context, snapshot) {
-          final rows = snapshot.data ?? [];
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (rows.isEmpty) {
-            return const EmptyState(
-                icon: Icons.apartment_rounded,
-                title: 'No property listings',
-                message: 'Post your property to see it here.');
-          }
-          return ListView(
+      actions: [
+        IconButton(
+          tooltip: 'Post property',
+          onPressed: () => context.push('/app/find-home/post'),
+          icon: const Icon(Icons.add_home_work_rounded),
+        ),
+      ],
+      child: RefreshIndicator(
+        onRefresh: () async {
+          _reload();
+          await _future;
+        },
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(
+                children: [
+                  SizedBox(
+                    height: 420,
+                    child: EmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Could not load properties',
+                      message: snapshot.error.toString(),
+                    ),
+                  ),
+                ],
+              );
+            }
+            final rows = snapshot.data ?? [];
+            if (rows.isEmpty) {
+              return ListView(
+                children: const [
+                  SizedBox(
+                    height: 420,
+                    child: EmptyState(
+                      icon: Icons.apartment_rounded,
+                      title: 'No property listings',
+                      message: 'Post your property to see it here.',
+                    ),
+                  ),
+                ],
+              );
+            }
+            return ListView(
               padding: const EdgeInsets.all(16),
               children: rows
-                  .map((p) => Padding(
+                  .map(
+                    (property) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: PropertyTile(property: p)))
-                  .toList());
-        },
+                      child: Column(
+                        children: [
+                          PropertyTile(property: property),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (['pending', 'rejected']
+                                  .contains(property.s('status')))
+                                TextButton.icon(
+                                  onPressed: () => _edit(property),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('Edit'),
+                                ),
+                              TextButton.icon(
+                                onPressed: () => _delete(property),
+                                icon: const Icon(Icons.delete_outline_rounded),
+                                label: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
       ),
     );
   }
