@@ -41,7 +41,7 @@ class CustomerRepository {
     final serviceCategories =
         await _gateway.categories(limit: 100, kind: 'service');
     final catalogueProducts =
-        await _gateway.browseProducts(limit: 120, sort: 'latest');
+        await _gateway.browseProducts(limit: 24, sort: 'latest');
     final catalogueServices = await _gateway.services(limit: 40);
 
     final products = catalogueProducts
@@ -104,13 +104,15 @@ class CustomerRepository {
       {String? category,
       String? subcategory,
       String? search,
-      String? sort}) async {
+      String? sort,
+      int limit = 24,
+      int offset = 0}) async {
     final q = search?.trim() ?? '';
     List<Map<String, dynamic>> rows;
     if (q.isNotEmpty) {
       // Catalog search returns mixed types; keep products only (web parity).
-      final raw =
-          await _gateway.searchCatalog(query: q, type: 'product', limit: 50);
+      final raw = await _gateway.searchCatalog(
+          query: q, type: 'product', limit: limit, offset: offset);
       rows = raw
           .where((row) =>
               row.s('type', 'product').toLowerCase() == 'product' ||
@@ -118,7 +120,10 @@ class CustomerRepository {
           .toList();
     } else {
       rows = await _gateway.browseProducts(
-          categoryId: category, subcategoryId: subcategory, limit: 120);
+          categoryId: category,
+          subcategoryId: subcategory,
+          limit: limit,
+          offset: offset);
     }
     var products = rows.map(_normalizeProduct).toList();
     if (q.isNotEmpty &&

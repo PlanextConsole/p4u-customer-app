@@ -24,8 +24,16 @@ String resolveMediaUrl(String? raw) {
   if (value.startsWith('http://') || value.startsWith('https://')) {
     try {
       final parsed = Uri.parse(value);
+      final path =
+          '${parsed.path}${parsed.hasQuery ? '?${parsed.query}' : ''}';
       if (isUploadPath(parsed.path)) {
-        return '$origin${parsed.path}${parsed.hasQuery ? '?${parsed.query}' : ''}';
+        return '$origin$path';
+      }
+      // Stale local/dev hosts break on customer devices — rewrite onto gateway.
+      if (parsed.host == 'localhost' ||
+          parsed.host == '127.0.0.1' ||
+          parsed.host == '0.0.0.0') {
+        return '$origin$path';
       }
     } catch (_) {
       return value;
@@ -35,6 +43,17 @@ String resolveMediaUrl(String? raw) {
 
   final normalized = value.startsWith('/') ? value : '/$value';
   return '$origin$normalized';
+}
+
+/// Swap admin ↔ vendor upload prefix when the first path 404s.
+String? alternateUploadUrl(String url) {
+  if (url.contains('/vendor-uploads/')) {
+    return url.replaceFirst('/vendor-uploads/', '/uploads/');
+  }
+  if (url.contains('/uploads/')) {
+    return url.replaceFirst('/uploads/', '/vendor-uploads/');
+  }
+  return null;
 }
 
 /// Detects video media by file extension (web parity).

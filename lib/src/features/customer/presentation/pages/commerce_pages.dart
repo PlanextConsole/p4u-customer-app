@@ -989,6 +989,8 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
           search: _search.text.trim(),
           category: _category,
           sort: _sort,
+          limit: 24,
+          offset: 0,
         );
   }
 

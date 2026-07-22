@@ -95,6 +95,9 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
   Map<String, dynamic>? _subcategory;
   Object? _error;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  static const int _pageSize = 24;
   bool _grid = true;
   bool _gpsOn = false;
   bool _offersOnly = false;
@@ -258,19 +261,28 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
     await _loadResults();
   }
 
-  Future<void> _loadResults() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadResults({bool append = false}) async {
+    if (append) {
+      if (_loadingMore || !_hasMore) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _hasMore = false;
+      });
+    }
     try {
       final repo = ref.read(customerRepositoryProvider);
+      final offset = append ? _results.length : 0;
       final rows = _isShop
           ? await repo.browseProducts(
               category: _subcategory == null ? _category?.s('id') : null,
               subcategory: _subcategory?.s('id'),
               search: _search.text.trim(),
               sort: _sort,
+              limit: _pageSize,
+              offset: offset,
             )
           : await repo.services(
               category: _subcategory == null ? _category?.s('id') : null,
@@ -280,14 +292,26 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
             );
       if (!mounted) return;
       setState(() {
-        _results = rows;
+        if (append) {
+          final seen = _results.map((row) => row.s('id')).toSet();
+          _results = [
+            ..._results,
+            ...rows.where((row) => !seen.contains(row.s('id'))),
+          ];
+        } else {
+          _results = rows;
+        }
+        _hasMore = _isShop && rows.length >= _pageSize;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = error;
+          _error = append ? _error : error;
           _loading = false;
+          _loadingMore = false;
+          if (!append) _hasMore = false;
         });
       }
     }
@@ -632,8 +656,10 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
         ),
       );
     }
+
+    Widget list;
     if (_isShop && _grid) {
-      return GridView.builder(
+      list = GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: rows.length,
@@ -645,14 +671,37 @@ class _CatalogFlowPageState extends ConsumerState<_CatalogFlowPage> {
         ),
         itemBuilder: (_, index) => _productCard(rows[index]),
       );
+    } else {
+      list = Column(
+        children: rows
+            .map((row) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _isShop ? _productCard(row) : _serviceCard(row),
+                ))
+            .toList(),
+      );
     }
+
     return Column(
-      children: rows
-          .map((row) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _isShop ? _productCard(row) : _serviceCard(row),
-              ))
-          .toList(),
+      children: [
+        list,
+        if (_hasMore) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _loadingMore ? null : () => _loadResults(append: true),
+              child: _loadingMore
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Load more'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 

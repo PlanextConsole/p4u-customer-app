@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/media_url.dart';
 
-class RemoteImage extends StatelessWidget {
+class RemoteImage extends StatefulWidget {
   const RemoteImage({
     required this.url,
     this.assetFallback,
@@ -22,47 +22,94 @@ class RemoteImage extends StatelessWidget {
   final double borderRadius;
 
   @override
+  State<RemoteImage> createState() => _RemoteImageState();
+}
+
+class _RemoteImageState extends State<RemoteImage> {
+  late String _candidate;
+  bool _triedAlternate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _candidate = resolveMediaUrl(widget.url);
+  }
+
+  @override
+  void didUpdateWidget(covariant RemoteImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _candidate = resolveMediaUrl(widget.url);
+      _triedAlternate = false;
+    }
+  }
+
+  void _onError() {
+    if (!_triedAlternate) {
+      final alt = alternateUploadUrl(_candidate);
+      if (alt != null && alt != _candidate) {
+        setState(() {
+          _triedAlternate = true;
+          _candidate = alt;
+        });
+        return;
+      }
+    }
+    setState(() {
+      _triedAlternate = true;
+      _candidate = '';
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final candidate = resolveMediaUrl(url);
     Widget image;
-    if (candidate.startsWith('http')) {
+    if (_candidate.startsWith('http')) {
       image = Image.network(
-        candidate,
-        height: height,
-        width: width,
-        fit: fit,
-        errorBuilder: (_, __, ___) => _fallback(),
+        _candidate,
+        height: widget.height,
+        width: widget.width,
+        fit: widget.fit,
+        errorBuilder: (_, __, ___) {
+          if (_candidate.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _onError();
+            });
+          }
+          return _fallback();
+        },
         loadingBuilder: (context, child, loading) {
           if (loading == null) return child;
           return _fallback(icon: Icons.image_rounded);
         },
       );
-    } else if (candidate.startsWith('assets/')) {
-      image = Image.asset(candidate,
-          height: height,
-          width: width,
-          fit: fit,
+    } else if (_candidate.startsWith('assets/')) {
+      image = Image.asset(_candidate,
+          height: widget.height,
+          width: widget.width,
+          fit: widget.fit,
           errorBuilder: (_, __, ___) => _fallback());
-    } else if (assetFallback != null) {
-      image = Image.asset(assetFallback!,
-          height: height,
-          width: width,
-          fit: fit,
+    } else if (widget.assetFallback != null) {
+      image = Image.asset(widget.assetFallback!,
+          height: widget.height,
+          width: widget.width,
+          fit: widget.fit,
           errorBuilder: (_, __, ___) => _fallback());
     } else {
       image = _fallback();
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: SizedBox(height: height, width: width, child: image),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+          height: widget.height, width: widget.width, child: image),
     );
   }
 
   Widget _fallback({IconData icon = Icons.image_not_supported_rounded}) {
     return Container(
-      height: height,
-      width: width,
+      height: widget.height,
+      width: widget.width,
       color: AppColors.accent,
       alignment: Alignment.center,
       child: Icon(icon, color: AppColors.primary),
