@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
@@ -313,11 +316,13 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
   final _locality = TextEditingController();
   final _area = TextEditingController();
   final _bhk = TextEditingController();
-  final _image = TextEditingController();
   final _description = TextEditingController();
   String _type = 'sale';
   String _propertyType = 'Apartment';
   bool _submitting = false;
+  bool _uploadingImage = false;
+  String? _imageUrl;
+  String? _localPreviewPath;
 
   @override
   void dispose() {
@@ -327,9 +332,57 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
     _locality.dispose();
     _area.dispose();
     _bhk.dispose();
-    _image.dispose();
     _description.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picked =
+        await ImagePicker().pickImage(source: source, imageQuality: 85);
+    if (picked == null) return;
+    setState(() {
+      _localPreviewPath = picked.path;
+      _uploadingImage = true;
+    });
+    try {
+      final url = await ref
+          .read(customerRepositoryProvider)
+          .uploadSocialFile(File(picked.path));
+      if (!mounted) return;
+      setState(() => _imageUrl = url);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _localPreviewPath = null;
+        _imageUrl = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not upload photo. $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
   }
 
   Future<void> _submit(String customerId) async {
@@ -348,6 +401,12 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
       );
       return;
     }
+    if ((_imageUrl ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload a property photo.')),
+      );
+      return;
+    }
 
     setState(() => _submitting = true);
     try {
@@ -362,7 +421,7 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
         'description': _description.text.trim(),
         'property_type': _propertyType,
         'posted_by': 'Owner',
-        'images': [if (_image.text.trim().isNotEmpty) _image.text.trim()],
+        'images': [_imageUrl!.trim()],
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -461,12 +520,61 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
                     decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.bed_rounded), hintText: 'BHK')),
                 const SizedBox(height: 12),
-                TextField(
-                    controller: _image,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.image_outlined),
-                        hintText: 'Image URL (optional)')),
+                InkWell(
+                  onTap: _uploadingImage ? null : _pickImage,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: double.infinity,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F4F8),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD8E2EA)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _uploadingImage
+                        ? const Center(child: CircularProgressIndicator())
+                        : _localPreviewPath != null
+                            ? Image.file(File(_localPreviewPath!),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: 180)
+                            : _imageUrl != null
+                                ? RemoteImage(
+                                    url: _imageUrl,
+                                    height: 180,
+                                    width: double.infinity,
+                                    borderRadius: 14)
+                                : const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo_rounded,
+                                          color: AppColors.primary, size: 32),
+                                      SizedBox(height: 8),
+                                      Text('Upload property photo',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF334155))),
+                                      SizedBox(height: 4),
+                                      Text('Camera or gallery',
+                                          style: TextStyle(
+                                              color: Color(0xFF64748B),
+                                              fontSize: 13)),
+                                    ],
+                                  ),
+                  ),
+                ),
+                if (_imageUrl != null || _localPreviewPath != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _uploadingImage ? null : _pickImage,
+                      icon: const Icon(Icons.sync_rounded),
+                      label: const Text('Change photo'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextField(
                     controller: _description,
@@ -477,7 +585,9 @@ class _PostPropertyPageState extends ConsumerState<PostPropertyPage> {
                         hintText: 'Description')),
                 const SizedBox(height: 14),
                 FilledButton.icon(
-                  onPressed: _submitting ? null : () => _submit(auth.id),
+                  onPressed: (_submitting || _uploadingImage)
+                      ? null
+                      : () => _submit(auth.id),
                   icon: _submitting
                       ? const SizedBox.square(
                           dimension: 18,
