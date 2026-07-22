@@ -106,13 +106,13 @@ class _RemoteImageState extends State<RemoteImage> {
     );
   }
 
-  Widget _fallback({IconData icon = Icons.image_not_supported_rounded}) {
+  Widget _fallback({IconData icon = Icons.home_work_outlined}) {
     return Container(
       height: widget.height,
       width: widget.width,
-      color: AppColors.accent,
+      color: const Color(0xFFE8F4F8),
       alignment: Alignment.center,
-      child: Icon(icon, color: AppColors.primary),
+      child: Icon(icon, color: AppColors.primary.withValues(alpha: 0.7), size: 36),
     );
   }
 }

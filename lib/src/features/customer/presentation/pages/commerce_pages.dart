@@ -2542,14 +2542,17 @@ class _CustomerOrderDetailPageState
 }
 
 bool _canCancel(String status) {
-  const blocked = {
-    'cancelled',
-    'canceled',
-    'shipped',
-    'delivered',
-    'completed',
+  const allowed = {
+    'created',
+    'placed',
+    'pending',
+    'paid',
+    'accepted',
+    'processing',
+    'in_progress',
+    'new',
   };
-  return !blocked.contains(status.toLowerCase());
+  return allowed.contains(status.toLowerCase());
 }
 
 class CustomerVendorPage extends ConsumerWidget {

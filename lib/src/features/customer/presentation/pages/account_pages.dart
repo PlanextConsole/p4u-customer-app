@@ -1040,7 +1040,7 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
             itemBuilder: (context, index) {
               final booking = bookings[index];
               final status = booking.s('status', 'pending');
-              final canCancel = !['cancelled', 'completed', 'rejected']
+              final canCancel = ['pending', 'approved', 'confirmed', 'in_progress']
                   .contains(status.toLowerCase());
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),

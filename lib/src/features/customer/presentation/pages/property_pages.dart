@@ -217,11 +217,21 @@ class PropertyDetailPage extends ConsumerWidget {
                 title: 'Property not found',
                 message: 'This listing is unavailable.');
           }
+          final images = property['images'];
+          var cover = property.s('image_url', property.s('cover_image', property.s('coverImage')));
+          if (cover.isEmpty && images is List && images.isNotEmpty) {
+            final first = images.first;
+            cover = first is String
+                ? first.trim()
+                : first is Map
+                    ? (first['url'] ?? first['src'] ?? first['imageUrl'] ?? '').toString()
+                    : '';
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               RemoteImage(
-                  url: property.s('image_url', property.s('cover_image')),
+                  url: cover,
                   height: 250,
                   width: double.infinity,
                   borderRadius: 18),
@@ -230,13 +240,16 @@ class PropertyDetailPage extends ConsumerWidget {
                   style: Theme.of(context)
                       .textTheme
                       .headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.w900)),
+                      ?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF334155),
+                      )),
               const SizedBox(height: 8),
               Text(money(property.n('price')),
                   style: const TextStyle(
                       color: AppColors.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 24)),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22)),
               const SizedBox(height: 8),
               Text(
                   '${property.s('bhk')} BHK - ${property.s('area_sqft')} sqft - ${property.s('locality', property.s('city'))}',

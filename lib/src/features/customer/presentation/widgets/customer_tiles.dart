@@ -219,48 +219,95 @@ class PropertyTile extends StatelessWidget {
 
   final Map<String, dynamic> property;
 
+  String get _cover {
+    final direct = property.s('image_url', property.s('cover_image', property.s('coverImage')));
+    if (direct.isNotEmpty) return direct;
+    final images = property['images'];
+    if (images is List && images.isNotEmpty) {
+      final first = images.first;
+      if (first is String && first.trim().isNotEmpty) return first.trim();
+      if (first is Map) {
+        return (first['url'] ?? first['src'] ?? first['imageUrl'] ?? '').toString();
+      }
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      onTap: () => context.push('/app/find-home/${property.s('id')}'),
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          RemoteImage(
-              url: property.s('image_url', property.s('cover_image')),
-              height: 150,
-              width: double.infinity),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                        child: Text(property.s('title', 'Property'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w900))),
-                    StatusBadge(property.s('transaction_type', 'sale')),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                    '${property.s('bhk')} BHK - ${property.s('locality', property.s('city'))}',
-                    style: const TextStyle(color: AppColors.muted)),
-                const SizedBox(height: 8),
-                Text(money(property.n('price')),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.primary,
-                        fontSize: 16)),
-              ],
+    final bhk = property.s('bhk');
+    final place = property.s('locality', property.s('city'));
+    final metaBits = <String>[
+      if (bhk.isNotEmpty && bhk != '0') '$bhk BHK',
+      if (place.isNotEmpty) place,
+    ];
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => context.push('/app/find-home/${property.s('id')}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              child: RemoteImage(
+                url: _cover,
+                height: 168,
+                width: double.infinity,
+                borderRadius: 0,
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          property.s('title', 'Property'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      StatusBadge(property.s('transaction_type', 'sale')),
+                    ],
+                  ),
+                  if (metaBits.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      metaBits.join(' · '),
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Text(
+                    money(property.n('price')),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
