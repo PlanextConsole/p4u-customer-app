@@ -15,6 +15,7 @@ import '../../../../core/widgets/customer_scaffold.dart';
 import '../../../../core/widgets/remote_image.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
+import '../widgets/customer_address_selector.dart';
 import '../widgets/customer_tiles.dart';
 import 'account_pages.dart';
 
@@ -62,6 +63,8 @@ class _CustomerServicesPageState extends ConsumerState<CustomerServicesPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const CustomerAddressHeader(),
+            const SizedBox(height: 12),
             TextField(
               controller: _search,
               textInputAction: TextInputAction.search,
@@ -179,14 +182,11 @@ class _CustomerServiceDetailPageState
     _bootstrapped = true;
     final auth = ref.read(customerAuthStateProvider).valueOrNull;
     if (auth != null) {
-      final rows =
-          await ref.read(customerRepositoryProvider).customerAddresses(auth.id);
+      final addressState = await ref.read(customerAddressProvider.future);
       if (mounted) {
         setState(() {
-          _addresses = rows;
-          if (_addressId == null && rows.isNotEmpty) {
-            _addressId = rows.first.s('id', rows.first.s('addressId'));
-          }
+          _addresses = addressState.addresses;
+          _addressId ??= addressState.selectedAddressId;
         });
       }
     }
@@ -394,11 +394,18 @@ class _CustomerServiceDetailPageState
                                 ),
                               ))
                           .toList(),
-                      onChanged: (value) => setState(() => _addressId = value),
+                      onChanged: (value) {
+                        setState(() => _addressId = value);
+                        if (value != null) {
+                          ref
+                              .read(customerAddressProvider.notifier)
+                              .selectAddress(value);
+                        }
+                      },
                     ),
                     if (_addresses.isEmpty && auth != null)
                       TextButton(
-                        onPressed: () => context.push('/app/profile'),
+                        onPressed: () => context.push('/app/profile/edit'),
                         child: const Text('Add an address'),
                       ),
                     const SizedBox(height: 12),

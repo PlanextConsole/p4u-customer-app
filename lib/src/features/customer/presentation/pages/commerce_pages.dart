@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/map_ext.dart';
+import '../../../../core/services/api_client.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/customer_scaffold.dart';
 import '../../../../core/widgets/remote_image.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../data/customer_providers.dart';
 import '../../domain/customer_models.dart';
+import '../widgets/customer_address_selector.dart';
 import '../widgets/customer_tiles.dart';
 
 class CustomerLandingPage extends ConsumerWidget {
@@ -1004,6 +1007,8 @@ class _CustomerBrowsePageState extends ConsumerState<CustomerBrowsePage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const CustomerAddressHeader(),
+            const SizedBox(height: 12),
             TextField(
               controller: _search,
               textInputAction: TextInputAction.search,
@@ -1721,18 +1726,60 @@ class PaymentPage extends ConsumerStatefulWidget {
 
 class _PaymentPageState extends ConsumerState<PaymentPage> {
   CartSummary? _summary;
-  List<Map<String, dynamic>> _addresses = const [];
   final _coupon = TextEditingController();
   final _points = TextEditingController(text: '0');
   String _payMethod = 'cod';
+  String _couponCode = '';
   num _couponDiscount = 0;
   bool _loading = true;
   bool _placing = false;
   String? _error;
+  Razorpay? _razorpay;
+  String? _pendingOrderId;
+
+  void _onRazorpaySuccess(PaymentSuccessResponse response) async {
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      await repo.verifyPaymentPayload({
+        'razorpay_order_id': response.orderId,
+        'razorpay_payment_id': response.paymentId,
+        'razorpay_signature': response.signature,
+      });
+      await repo.clearCartAfterPaid();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment successful for order ${_pendingOrderId ?? ''}')),
+      );
+      ref.invalidate(cartSummaryProvider);
+      context.go('/app/orders');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
+  }
+
+  void _onRazorpayError(PaymentFailureResponse response) {
+    if (!mounted) return;
+    setState(() {
+      _placing = false;
+      _error =
+          'Payment failed: ${response.message ?? response.code ?? 'unknown error'}. Order ${_pendingOrderId ?? ''} is pending payment.';
+    });
+  }
+
+  void _onRazorpayExternal(ExternalWalletResponse response) {
+    // no-op
+  }
 
   @override
   void initState() {
     super.initState();
+    _razorpay = Razorpay();
+    _razorpay?.on(Razorpay.EVENT_PAYMENT_SUCCESS, _onRazorpaySuccess);
+    _razorpay?.on(Razorpay.EVENT_PAYMENT_ERROR, _onRazorpayError);
+    _razorpay?.on(Razorpay.EVENT_EXTERNAL_WALLET, _onRazorpayExternal);
     _load();
   }
 
@@ -1740,6 +1787,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
   void dispose() {
     _coupon.dispose();
     _points.dispose();
+    _razorpay?.clear();
     super.dispose();
   }
 
@@ -1753,12 +1801,12 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       final summary = await repo.cartSummary(
         pointsUsed: points,
         couponDiscount: _couponDiscount,
+        couponCode: _couponCode.isEmpty ? null : _couponCode,
       );
-      final addresses = await repo.customerAddresses(auth.id);
       if (!mounted) return;
       setState(() {
         _summary = summary;
-        _addresses = addresses;
+        _couponDiscount = summary.couponDiscount;
         _loading = false;
         _error = null;
       });
@@ -1774,6 +1822,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final address = ref.watch(customerAddressProvider).valueOrNull?.selectedAddress;
     if (auth == null) return const _LoginRequired();
     if (_loading) {
       return const CustomerScaffold(
@@ -1794,7 +1843,6 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         ),
       );
     }
-    final address = _addresses.isEmpty ? null : _addresses.first;
     return CustomerScaffold(
       title: 'Payment',
       showBack: true,
@@ -1803,21 +1851,32 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         children: [
           const SectionHeader(title: 'Delivery Address'),
           AppCard(
-            child: address == null
-                ? const Text(
-                    'No saved address. Add one from profile edit or set location.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (address == null)
+                  const Text(
+                    'No saved address. Add one from profile or change address below.',
                   )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        address.s('name', auth.name),
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      Text(address.s('address_line', address.s('address'))),
-                      Text('${address.s('city')} ${address.s('pincode')}'),
-                    ],
+                else ...[
+                  Text(
+                    address.s('name', auth.name),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
+                  Text(address.s('address_line', address.s('address'))),
+                  Text('${address.s('city')} ${address.s('pincode')}'),
+                ],
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await showCustomerAddressSelector(context);
+                    if (mounted) setState(() {});
+                  },
+                  icon: const Icon(Icons.edit_location_alt_outlined),
+                  label: Text(address == null ? 'Select address' : 'Change address'),
+                ),
+              ],
+            ),
           ),
           const SectionHeader(title: 'Rewards & coupon'),
           AppCard(
@@ -1853,17 +1912,24 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
                                 _coupon.text,
                                 summary.subtotal,
                               );
-                          setState(() => _couponDiscount = discount);
+                          setState(() {
+                            _couponCode = _coupon.text.trim();
+                            _couponDiscount = discount;
+                          });
                           await _load();
                           messenger.showSnackBar(
                             SnackBar(
-                              content: Text(
-                                'Coupon applied: ${money(discount)} off',
-                              ),
+                              content: Text('Coupon applied: −₹$discount'),
                             ),
                           );
                         } catch (e) {
-                          messenger.showSnackBar(SnackBar(content: Text('$e')));
+                          setState(() {
+                            _couponCode = '';
+                            _couponDiscount = 0;
+                          });
+                          messenger.showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
                         }
                       },
                       child: const Text('Apply'),
@@ -1967,59 +2033,67 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       _error = null;
     });
     try {
+      if (address == null || address.s('id').isEmpty) {
+        throw const ApiException('Select a delivery address before placing the order.');
+      }
       final repo = ref.read(customerRepositoryProvider);
       final order = await repo.placeOrder(
         customerId: customerId,
         summary: summary,
         address: address,
         paymentMode: _payMethod,
+        couponCode: _couponCode.isEmpty ? null : _couponCode,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Order placed: ${order.s('orderRef', order.s('id'))}',
-            ),
-          ),
-        );
-      }
-      if (_payMethod == 'online') {
-        final intent = await repo.createPaymentIntentForOrder(
-          orderId: order.s('id'),
-          amount: summary.total,
-        );
-        final intentId = intent.s('id');
-        var paid = false;
-        for (var i = 0; i < 8; i++) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          final status = await repo.paymentIntentStatus(intentId);
-          final st = status.s('status').toLowerCase();
-          if (st == 'succeeded' || st == 'completed' || st == 'captured') {
-            paid = true;
-            break;
-          }
-          if (st == 'failed' || st == 'cancelled') break;
-        }
-        if (!paid) {
-          // Still leave the order pending; user can pay from My Orders later.
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Order created. Complete payment from My Orders if needed.',
-                ),
+      if (_payMethod != 'online') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Order placed: ${order.s('orderRef', order.s('id'))}',
               ),
-            );
-          }
-        } else {
-          await repo.clearCartAfterPaid();
+            ),
+          );
         }
+        ref.invalidate(cartSummaryProvider);
+        if (mounted) context.go('/app/orders');
+        return;
       }
-      ref.invalidate(cartSummaryProvider);
-      if (mounted) context.go('/app/orders');
+
+      const keyId = String.fromEnvironment(
+        'RAZORPAY_KEY_ID',
+        defaultValue: '',
+      );
+      if (keyId.isEmpty) {
+        throw const ApiException(
+          'Online payment is not configured. Set RAZORPAY_KEY_ID or use Cash on Delivery.',
+        );
+      }
+
+      final intent = await repo.createPaymentIntentForOrder(
+        orderId: order.s('id'),
+        amount: summary.total,
+      );
+      final providerRef = intent.s('providerRef', intent.s('provider_ref'));
+      if (providerRef.isEmpty) {
+        throw const ApiException('Payment provider did not return an order reference.');
+      }
+
+      _pendingOrderId = order.s('id');
+      _razorpay?.open({
+        'key': keyId,
+        'amount': (summary.total * 100).round(),
+        'currency': intent.s('currency', 'INR'),
+        'name': 'Planext4u',
+        'description': 'Order ${order.s('orderRef', order.s('id'))}',
+        'order_id': providerRef,
+        'prefill': {
+          'contact': address.s('phone'),
+          'name': address.s('name', address.s('fullName')),
+        },
+      });
+      // Success/error handlers finish the flow.
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
-    } finally {
       if (mounted) setState(() => _placing = false);
     }
   }

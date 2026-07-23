@@ -164,7 +164,6 @@ class CustomerProfileEditPage extends ConsumerStatefulWidget {
 class _CustomerProfileEditPageState
     extends ConsumerState<CustomerProfileEditPage> {
   Future<Map<String, dynamic>?>? _profileFuture;
-  Future<List<Map<String, dynamic>>>? _addressesFuture;
   String? _loadedCustomerId;
   final _name = TextEditingController();
   final _email = TextEditingController();
@@ -188,27 +187,17 @@ class _CustomerProfileEditPageState
   bool _addressLoading = false;
   bool _avatarUploading = false;
   bool _isDefaultAddress = false;
+  String? _editingAddressId;
   bool _initialized = false;
 
   void _ensureDataFutures(String customerId) {
-    if (_loadedCustomerId == customerId &&
-        _profileFuture != null &&
-        _addressesFuture != null) {
-      return;
-    }
+    if (_loadedCustomerId == customerId && _profileFuture != null) return;
     _loadedCustomerId = customerId;
-    final repo = ref.read(customerRepositoryProvider);
-    _profileFuture = repo.profile(customerId);
-    _addressesFuture = repo.customerAddresses(customerId);
+    _profileFuture = ref.read(customerRepositoryProvider).profile(customerId);
   }
 
   void _reloadProfile(String customerId) {
     _profileFuture = ref.read(customerRepositoryProvider).profile(customerId);
-  }
-
-  void _reloadAddresses(String customerId) {
-    _addressesFuture =
-        ref.read(customerRepositoryProvider).customerAddresses(customerId);
   }
 
   @override
@@ -246,6 +235,7 @@ class _CustomerProfileEditPageState
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final addressState = ref.watch(customerAddressProvider);
     if (auth == null) return const LoginRequiredPage();
     _ensureDataFutures(auth.id);
     return CustomerScaffold(
@@ -474,31 +464,25 @@ class _CustomerProfileEditPageState
                 ),
               ),
               const SectionHeader(title: 'Saved Addresses'),
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: _addressesFuture,
-                builder: (context, snapshot) {
-                  final addresses = snapshot.data ?? [];
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Padding(
-                      padding: EdgeInsets.all(18),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError) {
-                    return EmptyState(
-                      icon: Icons.cloud_off_rounded,
-                      title: 'Addresses unavailable',
-                      message: snapshot.error.toString(),
-                      action: TextButton.icon(
-                        onPressed: () => setState(() {
-                          _reloadAddresses(auth.id);
-                        }),
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Retry'),
-                      ),
-                    );
-                  }
-                  if (addresses.isEmpty) {
+              addressState.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => EmptyState(
+                  icon: Icons.cloud_off_rounded,
+                  title: 'Addresses unavailable',
+                  message: error.toString(),
+                  action: TextButton.icon(
+                    onPressed: () => ref
+                        .read(customerAddressProvider.notifier)
+                        .refresh(),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Retry'),
+                  ),
+                ),
+                data: (state) {
+                  if (state.addresses.isEmpty) {
                     return const Padding(
                       padding: EdgeInsets.only(bottom: 12),
                       child: EmptyState(
@@ -510,65 +494,119 @@ class _CustomerProfileEditPageState
                   }
                   return Column(
                     children: [
-                      for (final address in addresses)
+                      for (final address in state.addresses)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: AppCard(
-                            child: Row(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.location_on_rounded,
-                                    color: AppColors.primary),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.location_on_rounded,
+                                      color: AppColors.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Expanded(
-                                            child: Text(
-                                              address.s('label', 'Home'),
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.w900),
+                                          Wrap(
+                                            spacing: 7,
+                                            runSpacing: 5,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              Text(
+                                                address.s('label', 'Home'),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                              if (address.b('is_default'))
+                                                const StatusBadge('default'),
+                                              if (address.s('id') ==
+                                                  state.selectedAddressId)
+                                                const StatusBadge('selected'),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            formatCustomerAddress(address),
+                                            style: const TextStyle(
+                                              color: AppColors.muted,
                                             ),
                                           ),
-                                          if (address.b('is_default'))
-                                            const StatusBadge('default'),
+                                          if (address.s('name').isNotEmpty ||
+                                              address.s('mobile').isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              [
+                                                address.s('name'),
+                                                address.s('mobile'),
+                                              ]
+                                                  .where((value) =>
+                                                      value.trim().isNotEmpty)
+                                                  .join(' - '),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.muted,
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        [
-                                          address.s('address_line'),
-                                          address.s('line2'),
-                                          address.s('city'),
-                                          address.s('state'),
-                                          address.s('pincode'),
-                                        ]
-                                            .where((v) => v.trim().isNotEmpty)
-                                            .join(', '),
-                                        style: const TextStyle(
-                                            color: AppColors.muted),
-                                      ),
-                                      if (address.s('name').isNotEmpty ||
-                                          address.s('mobile').isNotEmpty) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          [
-                                            address.s('name'),
-                                            address.s('mobile')
-                                          ]
-                                              .where((v) => v.trim().isNotEmpty)
-                                              .join(' - '),
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color: AppColors.muted),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  alignment: WrapAlignment.end,
+                                  children: [
+                                    if (address.s('id') !=
+                                        state.selectedAddressId)
+                                      TextButton.icon(
+                                        onPressed: () => _selectAddress(
+                                          address.s('id'),
                                         ),
-                                      ],
-                                    ],
-                                  ),
+                                        icon: const Icon(
+                                          Icons.check_circle_outline_rounded,
+                                          size: 17,
+                                        ),
+                                        label: const Text('Select'),
+                                      ),
+                                    if (!address.b('is_default'))
+                                      TextButton.icon(
+                                        onPressed: () => _setDefaultAddress(
+                                          address.s('id'),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.home_rounded,
+                                          size: 17,
+                                        ),
+                                        label: const Text('Set default'),
+                                      ),
+                                    IconButton(
+                                      tooltip: 'Edit address',
+                                      onPressed: () => _editAddress(address),
+                                      icon: const Icon(Icons.edit_rounded),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Delete address',
+                                      onPressed: () => _deleteAddress(
+                                        address.s('id'),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: AppColors.danger,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -661,16 +699,29 @@ class _CustomerProfileEditPageState
                       title: const Text('Set as default delivery address'),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
-                    Align(
-                      alignment: Alignment.center,
-                      child: OutlinedButton.icon(
-                        onPressed: _addressLoading
-                            ? null
-                            : () => _saveAddress(auth.id),
-                        icon: const Icon(Icons.add_location_alt_rounded),
-                        label: Text(
-                            _addressLoading ? 'Saving...' : 'Save Address'),
-                      ),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _addressLoading
+                              ? null
+                              : _saveAddress,
+                          icon: Icon(_editingAddressId == null
+                              ? Icons.add_location_alt_rounded
+                              : Icons.save_rounded),
+                          label: Text(_addressLoading
+                              ? 'Saving...'
+                              : _editingAddressId == null
+                                  ? 'Save Address'
+                                  : 'Update Address'),
+                        ),
+                        if (_editingAddressId != null)
+                          TextButton(
+                            onPressed: _addressLoading ? null : _clearAddressForm,
+                            child: const Text('Cancel edit'),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -767,7 +818,79 @@ class _CustomerProfileEditPageState
     return '${parts[2]}-${parts[1]}-${parts[0]}';
   }
 
-  Future<void> _saveAddress(String customerId) async {
+  void _editAddress(Map<String, dynamic> address) {
+    setState(() {
+      _editingAddressId = address.s('id');
+      _label.text = address.s('label', 'Home');
+      _recipient.text = address.s('fullName', address.s('name'));
+      _addressPhone.text = address.s('phone', address.s('mobile'));
+      _line1.text = address.s('line1', address.s('address_line'));
+      _line2.text = address.s('line2');
+      _city.text = address.s('city');
+      _state.text = address.s('state');
+      _pincode.text = address.s('pincode');
+      _isDefaultAddress = address.b('is_default');
+    });
+  }
+
+  void _clearAddressForm() {
+    setState(() {
+      _editingAddressId = null;
+      _label.text = 'Home';
+      _recipient.text = _name.text;
+      _addressPhone.text = _digits(_mobile.text);
+      _line1.clear();
+      _line2.clear();
+      _city.clear();
+      _state.clear();
+      _pincode.clear();
+      _isDefaultAddress = false;
+    });
+  }
+
+  Future<void> _selectAddress(String id) async {
+    await ref.read(customerAddressProvider.notifier).selectAddress(id);
+    _snack('Selected address updated');
+  }
+
+  Future<void> _setDefaultAddress(String id) async {
+    try {
+      await ref.read(customerAddressProvider.notifier).setDefaultAddress(id);
+      _snack('Default address updated');
+    } catch (error) {
+      _snack('Could not set default address: $error');
+    }
+  }
+
+  Future<void> _deleteAddress(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete address?'),
+        content: const Text('This saved address will be removed from your account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(customerAddressProvider.notifier).deleteAddress(id);
+      if (_editingAddressId == id) _clearAddressForm();
+      _snack('Address deleted');
+    } catch (error) {
+      _snack('Could not delete address: $error');
+    }
+  }
+
+  Future<void> _saveAddress() async {
     final phone = _digits(_addressPhone.text);
     if (_recipient.text.trim().isEmpty) {
       return _snack('Recipient name is required');
@@ -775,21 +898,16 @@ class _CustomerProfileEditPageState
     if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
       return _snack('Enter a valid 10-digit address phone number');
     }
-    if (_line1.text.trim().isEmpty) {
-      return _snack('Address line 1 is required');
-    }
-    if (_city.text.trim().isEmpty) {
-      return _snack('City is required');
-    }
-    if (_state.text.trim().isEmpty) {
-      return _snack('State is required');
-    }
+    if (_line1.text.trim().isEmpty) return _snack('Address line 1 is required');
+    if (_city.text.trim().isEmpty) return _snack('City is required');
+    if (_state.text.trim().isEmpty) return _snack('State is required');
     if (!RegExp(r'^\d{6}$').hasMatch(_digits(_pincode.text))) {
       return _snack('Enter a valid 6-digit PIN code');
     }
     setState(() => _addressLoading = true);
     try {
-      await ref.read(customerRepositoryProvider).saveAddress(customerId, {
+      await ref.read(customerAddressProvider.notifier).saveAddress({
+        if (_editingAddressId != null) 'id': _editingAddressId,
         'label': _label.text.trim().isEmpty ? 'Home' : _label.text.trim(),
         'fullName': _recipient.text.trim(),
         'phone': phone,
@@ -801,16 +919,11 @@ class _CustomerProfileEditPageState
         'country': 'India',
         'isDefault': _isDefaultAddress,
       });
-      _line1.clear();
-      _line2.clear();
-      _city.clear();
-      _state.clear();
-      _pincode.clear();
-      _isDefaultAddress = false;
-      _snack('Address saved');
-      setState(() => _reloadAddresses(customerId));
-    } catch (e) {
-      final message = e.toString().replaceFirst('ApiException: ', '').trim();
+      final wasEditing = _editingAddressId != null;
+      _clearAddressForm();
+      _snack(wasEditing ? 'Address updated' : 'Address saved');
+    } catch (error) {
+      final message = error.toString().replaceFirst('ApiException: ', '').trim();
       _snack(message.isEmpty
           ? 'Could not save address. Please try again.'
           : 'Could not save address: $message');
@@ -818,7 +931,6 @@ class _CustomerProfileEditPageState
       if (mounted) setState(() => _addressLoading = false);
     }
   }
-
   String _digits(String value) => value
       .replaceAll(RegExp(r'\D'), '')
       .replaceFirst(RegExp(r'^91(?=\d{10}$)'), '');

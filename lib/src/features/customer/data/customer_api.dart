@@ -204,15 +204,36 @@ class CustomerApi {
   Future<Map<String, dynamic>> mergeCart(List<Map<String, dynamic>> items) =>
       _api.postJson('/api/v1/commerce/cart/merge',
           body: {'items': items}, auth: true);
-  Future<Map<String, dynamic>> quoteCart({int redeemPoints = 0}) =>
+  Future<Map<String, dynamic>> quoteCart({
+    int redeemPoints = 0,
+    String? couponCode,
+  }) =>
       _api.postJson('/api/v1/commerce/cart/quote',
-          body: {'redeemPoints': redeemPoints}, auth: true);
-  Future<Map<String, dynamic>> createOrderFromCart(
-      {int redeemPoints = 0, String? vendorId}) {
-    final body = <String, dynamic>{};
+          body: {
+            'redeemPoints': redeemPoints,
+            if (couponCode != null && couponCode.trim().isNotEmpty)
+              'couponCode': couponCode.trim(),
+          },
+          auth: true);
+  Future<Map<String, dynamic>> createOrderFromCart({
+    int redeemPoints = 0,
+    String? vendorId,
+    String? couponCode,
+    String? addressId,
+    Map<String, dynamic>? shippingAddress,
+    String paymentMode = 'cod',
+  }) {
+    final body = <String, dynamic>{
+      'paymentMode': paymentMode,
+    };
     if (redeemPoints > 0) body['redeemPoints'] = redeemPoints;
     final v = vendorId?.trim();
     if (v != null && v.isNotEmpty) body['vendorId'] = v;
+    final c = couponCode?.trim();
+    if (c != null && c.isNotEmpty) body['couponCode'] = c;
+    final a = addressId?.trim();
+    if (a != null && a.isNotEmpty) body['addressId'] = a;
+    if (shippingAddress != null) body['shippingAddress'] = shippingAddress;
     return _api.postJson('/api/v1/commerce/orders/from-cart',
         body: body, auth: true);
   }

@@ -18,6 +18,7 @@ class CustomerRepository {
   static const _wishlistKey = 'p4u_customer_wishlist';
   static const _serviceWishlistKey = 'p4u_customer_service_wishlist';
   static const _locationKey = 'p4u_customer_location';
+  static const _selectedAddressKey = 'p4u_selected_address_id';
   static const _recentProductsKey = 'p4u_customer_recent_products';
   static const _latitudeKey = 'p4u_customer_latitude';
   static const _longitudeKey = 'p4u_customer_longitude';
@@ -680,19 +681,32 @@ class CustomerRepository {
     return rows.map(_normalizeAddress).toList();
   }
 
-  Future<void> saveAddress(
+  Future<Map<String, dynamic>> saveAddress(
       String customerId, Map<String, dynamic> address) async {
     final payload = _addressPayload(address);
     final id = address['id']?.toString();
-    if (id == null || id.isEmpty) {
-      await _gateway.createAddress(payload);
-    } else {
-      await _gateway.updateAddress(id, payload);
-    }
+    final saved = id == null || id.isEmpty
+        ? await _gateway.createAddress(payload)
+        : await _gateway.updateAddress(id, payload);
+    return _normalizeAddress(saved);
   }
 
   Future<void> deleteAddress(String id) async {
     await _gateway.deleteAddress(id);
+  }
+
+  Future<String?> selectedAddressId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_selectedAddressKey);
+  }
+
+  Future<void> saveSelectedAddressId(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null || id.isEmpty) {
+      await prefs.remove(_selectedAddressKey);
+    } else {
+      await prefs.setString(_selectedAddressKey, id);
+    }
   }
 
   Future<List<Map<String, dynamic>>> walletTransactions(
@@ -1354,6 +1368,31 @@ class CustomerRepository {
     if (!await apiSession.hasToken()) {
       return decodeCart(prefs.getString(_cartKey));
     }
+    final local = decodeCart(prefs.getString(_cartKey));
+    if (local.isNotEmpty) {
+      try {
+        await _gateway.mergeCart(local
+            .map((item) => {
+                  'productId': item.productId,
+                  'quantity': item.qty,
+                  'unitPrice': item.price,
+                  'vendorId': item.vendorId,
+                  if (item.variantId != null && item.variantId!.isNotEmpty)
+                    'variationId': item.variantId,
+                  'metadata': {
+                    'productName': item.title,
+                    'productImage': item.image,
+                    'vendorName': item.vendor,
+                    'variantId': item.variantId,
+                    'selectedAttributes': item.selectedAttributes,
+                  },
+                })
+            .toList());
+        await prefs.remove(_cartKey);
+      } catch (_) {
+        // Keep local cart if merge fails; still load remote below.
+      }
+    }
     final remote = apiItems(await _gateway.cart());
     final items = remote.map(_cartItemFromApi).toList();
     await _saveCart(items);
@@ -1459,7 +1498,7 @@ class CustomerRepository {
   }
 
   Future<CartSummary> cartSummary(
-      {int pointsUsed = 0, num couponDiscount = 0}) async {
+      {int pointsUsed = 0, num couponDiscount = 0, String? couponCode}) async {
     final items = await cartItems();
     final subtotal =
         items.fold<num>(0, (sum, item) => sum + item.price * item.qty);
@@ -1474,9 +1513,13 @@ class CustomerRepository {
     var walletBalanceBefore = 0.0;
     var maxRedeemableValue = 0.0;
     var meetsMinCart = true;
+    var appliedCouponDiscount = couponDiscount;
     num? grandTotal;
     if (await apiSession.hasToken() && items.isNotEmpty) {
-      final quote = await _gateway.quoteCart(redeemPoints: pointsUsed);
+      final quote = await _gateway.quoteCart(
+        redeemPoints: pointsUsed,
+        couponCode: couponCode,
+      );
       platformFee = quote.n('platformFee', quote.n('platform_fee')).toDouble();
       deliveryFee = quote.n('deliveryFee', quote.n('delivery_fee')).toDouble();
       gstOnPlatformFee = quote
@@ -1493,10 +1536,10 @@ class CustomerRepository {
           .n('maxRedeemableValue', quote.n('max_redeemable_value'))
           .toDouble();
       meetsMinCart = quote['meetsMinCart'] != false;
+      appliedCouponDiscount = quote.n('discount', couponDiscount);
       final gt = quote['grandTotal'] ?? quote['grand_total'];
       if (gt != null) {
-        grandTotal =
-            quote.n('grandTotal', quote.n('grand_total')) - couponDiscount;
+        grandTotal = quote.n('grandTotal', quote.n('grand_total'));
         if (grandTotal < 0) grandTotal = 0;
       }
     }
@@ -1511,7 +1554,7 @@ class CustomerRepository {
       gstOnPlatformFee: gstOnPlatformFee,
       surgeCost: surgeCost,
       pointsRedeemedValue: pointsRedeemedValue,
-      couponDiscount: couponDiscount,
+      couponDiscount: appliedCouponDiscount,
       grandTotal: grandTotal,
       walletBalanceBefore: walletBalanceBefore,
       maxRedeemableValue: maxRedeemableValue,
@@ -1538,14 +1581,35 @@ class CustomerRepository {
     required CartSummary summary,
     required Map<String, dynamic>? address,
     String paymentMode = 'cod',
+    String? couponCode,
   }) async {
     if (summary.items.isEmpty) throw const ApiException('Cart is empty.');
+    final addressId = address?.s('id');
+    if (addressId == null || addressId.isEmpty) {
+      throw const ApiException('Select a delivery address before placing the order.');
+    }
+    final shippingAddress = <String, dynamic>{
+      'id': addressId,
+      'label': address?.s('label'),
+      'fullName': address?.s('name', address?.s('fullName') ?? ''),
+      'phone': address?.s('phone'),
+      'line1': address?.s('address_line', address?.s('line1') ?? ''),
+      'line2': address?.s('line2'),
+      'city': address?.s('city'),
+      'state': address?.s('state'),
+      'pincode': address?.s('pincode'),
+      'country': address?.s('country', 'IN'),
+    };
     Map<String, dynamic> order;
     if (await apiSession.hasToken()) {
       order = await _gateway.createOrderFromCart(
         redeemPoints: summary.pointsUsed,
         vendorId:
             summary.items.length == 1 ? summary.items.first.vendorId : null,
+        couponCode: couponCode,
+        addressId: addressId,
+        shippingAddress: shippingAddress,
+        paymentMode: paymentMode == 'online' ? 'razorpay' : paymentMode,
       );
     } else {
       order = await _gateway.createDirectOrder({
@@ -1561,10 +1625,13 @@ class CustomerRepository {
                   },
                 })
             .toList(),
-        'addressId': address?.s('id'),
-        'address': address,
+        'addressId': addressId,
+        'address': shippingAddress,
+        'shippingAddress': shippingAddress,
         'paymentMode': paymentMode,
         'redeemPoints': summary.pointsUsed,
+        if (couponCode != null && couponCode.trim().isNotEmpty)
+          'couponCode': couponCode.trim(),
       });
     }
     if (paymentMode == 'cod') {
@@ -1581,7 +1648,11 @@ class CustomerRepository {
         'orderId': orderId,
         'amount': amount.toStringAsFixed(2),
         'currency': 'INR',
-        'metadata': {'orderType': 'product', 'productOrderId': orderId},
+        'metadata': {
+          'orderType': 'product',
+          'domain': 'product',
+          'productOrderId': orderId,
+        },
       });
 
   Future<Map<String, dynamic>> verifyPaymentPayload(
