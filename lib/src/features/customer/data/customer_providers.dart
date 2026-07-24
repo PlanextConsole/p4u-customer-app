@@ -204,6 +204,16 @@ final selectedLocationProvider = FutureProvider<String?>((ref) {
   return ref.watch(customerRepositoryProvider).selectedLocation();
 });
 
-final landingWalletProvider = FutureProvider<Map<String, dynamic>>((ref) {
-  return ref.watch(customerRepositoryProvider).rewardPoints('');
+final landingWalletProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  // Re-run whenever auth resolves/changes so home does not keep a stale 0
+  // from an early fetch before the session token was ready.
+  final authAsync = ref.watch(customerAuthStateProvider);
+  if (authAsync.isLoading) {
+    await ref.watch(customerAuthStateProvider.future);
+  }
+  final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+  if (auth == null || auth.id.trim().isEmpty) {
+    return <String, dynamic>{};
+  }
+  return ref.read(customerRepositoryProvider).rewardPoints(auth.id);
 });

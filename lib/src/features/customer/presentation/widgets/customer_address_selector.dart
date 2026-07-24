@@ -36,7 +36,7 @@ class CustomerAddressHeader extends ConsumerWidget {
                 children: [
                   const Icon(
                     Icons.location_on_rounded,
-                    color: Color(0xFFFFDC3D),
+                    color: Colors.white,
                     size: 19,
                   ),
                   const SizedBox(width: 8),

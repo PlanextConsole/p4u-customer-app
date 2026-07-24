@@ -106,8 +106,19 @@ class AppTheme {
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: Colors.white,
         selectedColor: AppColors.softGreen,
+        disabledColor: const Color(0xFFF0F0F0),
         side: const BorderSide(color: AppColors.border),
-        labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          color: AppColors.brandDark,
+          fontSize: 13,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w800,
+          color: AppColors.brandDark,
+          fontSize: 13,
+        ),
+        checkmarkColor: AppColors.primaryDark,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       tabBarTheme: const TabBarThemeData(

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/map_ext.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../features/customer/data/customer_providers.dart';
 import '../../../../firebase_options.dart';
@@ -124,6 +125,7 @@ class _CustomerLoginPageState extends ConsumerState<CustomerLoginPage> {
       if (token == null) throw StateError('Missing Firebase ID token');
       await ref.read(authRepositoryProvider).signInWithFirebaseIdToken(token);
       ref.invalidate(customerAuthStateProvider);
+      ref.invalidate(landingWalletProvider);
       if (mounted) context.go('/app');
     } catch (e) {
       _snack(_friendly(e));
@@ -416,6 +418,7 @@ class _CustomerRegisterPageState extends ConsumerState<CustomerRegisterPage> {
                 _referral.text.trim().isEmpty ? null : _referral.text.trim(),
           );
       ref.invalidate(customerAuthStateProvider);
+      ref.invalidate(landingWalletProvider);
       if (mounted) context.go('/app/set-location');
     } catch (e) {
       _snack(_friendly(e));
@@ -554,13 +557,236 @@ class SetLocationPage extends ConsumerStatefulWidget {
 
 class _SetLocationPageState extends ConsumerState<SetLocationPage> {
   final _location = TextEditingController();
+  final _label = TextEditingController(text: 'Home');
+  final _recipient = TextEditingController();
+  final _addressPhone = TextEditingController();
+  final _line1 = TextEditingController();
+  final _line2 = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
+  final _pincode = TextEditingController();
   bool _locating = false;
+  bool _savingAddress = false;
+  bool _isDefaultAddress = true;
+  bool _showAddForm = false;
+
+  @override
+  void dispose() {
+    _location.dispose();
+    _label.dispose();
+    _recipient.dispose();
+    _addressPhone.dispose();
+    _line1.dispose();
+    _line2.dispose();
+    _city.dispose();
+    _state.dispose();
+    _pincode.dispose();
+    super.dispose();
+  }
+
+  String _digits(String value) => value
+      .replaceAll(RegExp(r'\D'), '')
+      .replaceFirst(RegExp(r'^91(?=\d{10}$)'), '');
+
+  void _clearAddressForm() {
+    _label.text = 'Home';
+    _recipient.clear();
+    _addressPhone.clear();
+    _line1.clear();
+    _line2.clear();
+    _city.clear();
+    _state.clear();
+    _pincode.clear();
+    _isDefaultAddress = true;
+  }
+
+  Future<void> _applySavedAddress(Map<String, dynamic> address) async {
+    final label = address.s('label', 'Home');
+    final formatted = formatCustomerAddress(address);
+    final value = formatted.isNotEmpty ? '$label — $formatted' : label;
+    _location.text = value;
+    await ref.read(customerRepositoryProvider).saveSelectedLocation(value);
+    await ref
+        .read(customerAddressProvider.notifier)
+        .selectAddress(address.s('id'));
+    ref.invalidate(selectedLocationProvider);
+    if (mounted) {
+      setState(() => _showAddForm = false);
+      _snack('Using $label');
+    }
+  }
+
+  Future<void> _saveFullAddress() async {
+    final auth = ref.read(customerAuthStateProvider).valueOrNull;
+    if (auth == null) {
+      _snack('Please login to save an address');
+      return;
+    }
+    final phone = _digits(_addressPhone.text);
+    if (_recipient.text.trim().isEmpty) {
+      return _snack('Recipient name is required');
+    }
+    if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+      return _snack('Enter a valid 10-digit mobile number');
+    }
+    if (_line1.text.trim().isEmpty) return _snack('Address line 1 is required');
+    if (_city.text.trim().isEmpty) return _snack('City is required');
+    if (_state.text.trim().isEmpty) return _snack('State is required');
+    if (!RegExp(r'^\d{6}$').hasMatch(_digits(_pincode.text))) {
+      return _snack('Enter a valid 6-digit PIN code');
+    }
+    setState(() => _savingAddress = true);
+    try {
+      final saved = await ref.read(customerAddressProvider.notifier).saveAddress({
+        'label': _label.text.trim().isEmpty ? 'Home' : _label.text.trim(),
+        'fullName': _recipient.text.trim(),
+        'phone': phone,
+        'line1': _line1.text.trim(),
+        'line2': _line2.text.trim(),
+        'city': _city.text.trim(),
+        'state': _state.text.trim(),
+        'pincode': _digits(_pincode.text),
+        'country': 'India',
+        'isDefault': _isDefaultAddress,
+      });
+      _clearAddressForm();
+      await _applySavedAddress(saved);
+      if (mounted) setState(() => _showAddForm = false);
+      _snack('Address saved');
+    } catch (error) {
+      final message = error.toString().replaceFirst('ApiException: ', '').trim();
+      _snack(message.isEmpty
+          ? 'Could not save address. Please try again.'
+          : 'Could not save address: $message');
+    } finally {
+      if (mounted) setState(() => _savingAddress = false);
+    }
+  }
+
+  Widget _buildAddAddressForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        TextField(
+          controller: _label,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.label_rounded),
+            labelText: 'Address label',
+            hintText: 'Home, Office',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _recipient,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.person_pin_rounded),
+            labelText: 'Recipient full name *',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressPhone,
+          keyboardType: TextInputType.phone,
+          maxLength: 10,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.phone_rounded),
+            labelText: 'Mobile number *',
+            counterText: '',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _line1,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.home_rounded),
+            labelText: 'Address line 1 *',
+            hintText: 'Flat, house no., street',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _line2,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.place_outlined),
+            labelText: 'Address line 2',
+            hintText: 'Area, landmark',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _city,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'City *'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _state,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'State *'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _pincode,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.pin_drop_rounded),
+            labelText: 'PIN code *',
+            counterText: '',
+          ),
+        ),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _isDefaultAddress,
+          onChanged: (value) =>
+              setState(() => _isDefaultAddress = value ?? false),
+          title: const Text('Set as default delivery address'),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        FilledButton.icon(
+          onPressed: _savingAddress ? null : _saveFullAddress,
+          icon: _savingAddress
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.add_location_alt_rounded),
+          label: Text(_savingAddress ? 'Saving...' : 'Save Address'),
+        ),
+        TextButton(
+          onPressed: _savingAddress
+              ? null
+              : () => setState(() {
+                    _showAddForm = false;
+                    _clearAddressForm();
+                  }),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(customerAuthStateProvider).valueOrNull;
+    final addressState = ref.watch(customerAddressProvider);
     return _SimpleAuthShell(
       title: 'Set Location',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
               controller: _location,
@@ -592,6 +818,149 @@ class _SetLocationPageState extends ConsumerState<SetLocationPage> {
             icon: const Icon(Icons.check_rounded),
             label: const Text('Continue'),
           ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Saved Addresses',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+              if (auth != null)
+                TextButton.icon(
+                  onPressed: () => setState(() {
+                    _showAddForm = !_showAddForm;
+                    if (!_showAddForm) _clearAddressForm();
+                  }),
+                  icon: Icon(_showAddForm
+                      ? Icons.close_rounded
+                      : Icons.add_location_alt_rounded),
+                  label: Text(_showAddForm ? 'Close' : 'Add new'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (auth == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Login to use or add saved addresses.',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push('/app/login'),
+                    child: const Text('Login'),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            if (_showAddForm) _buildAddAddressForm(),
+            addressState.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => Text(
+                e.toString(),
+                style: const TextStyle(color: AppColors.danger),
+              ),
+              data: (state) {
+                if (state.addresses.isEmpty && !_showAddForm) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'No saved addresses yet.',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _showAddForm = true),
+                        icon: const Icon(Icons.add_location_alt_rounded),
+                        label: const Text('Add full address'),
+                      ),
+                    ],
+                  );
+                }
+                if (state.addresses.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  children: [
+                    for (final address in state.addresses)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: address.s('id') == state.selectedAddressId
+                              ? AppColors.accent
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _applySavedAddress(address),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      address.s('id') == state.selectedAddressId
+                                          ? AppColors.primary
+                                          : AppColors.border,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on_rounded,
+                                        color: AppColors.primary,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          address.s('label', 'Home'),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      if (address.b('is_default'))
+                                        const Text(
+                                          'Default',
+                                          style: TextStyle(
+                                            color: AppColors.primary,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    formatCustomerAddress(address),
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
         ],
       ),
     );

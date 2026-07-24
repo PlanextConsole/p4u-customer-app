@@ -71,24 +71,40 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 ChoiceChip(
-                    label: const Text('All'),
+                    label: const Text('All',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     selected: _type.isEmpty,
+                    labelStyle: const TextStyle(
+                        color: AppColors.brandDark, fontWeight: FontWeight.w800),
                     onSelected: (_) => setState(() {
                           _type = '';
                           _load();
                         })),
                 ChoiceChip(
-                    label: const Text('Buy'),
+                    label: const Text('Buy',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     selected: _type == 'sale',
+                    labelStyle: const TextStyle(
+                        color: AppColors.brandDark, fontWeight: FontWeight.w800),
                     onSelected: (_) => setState(() {
                           _type = 'sale';
                           _load();
                         })),
                 ChoiceChip(
-                    label: const Text('Rent'),
+                    label: const Text('Rent',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     selected: _type == 'rent',
+                    labelStyle: const TextStyle(
+                        color: AppColors.brandDark, fontWeight: FontWeight.w800),
                     onSelected: (_) => setState(() {
                           _type = 'rent';
                           _load();
@@ -109,14 +125,22 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                         value: 'Commercial', child: Text('Commercial')),
                   ],
                   child: Chip(
-                    avatar: const Icon(Icons.apartment_rounded, size: 18),
-                    label: Text(_propertyType.isEmpty
-                        ? 'Property type'
-                        : _propertyType),
+                    avatar: const Icon(Icons.apartment_rounded,
+                        size: 18, color: AppColors.primary),
+                    label: Text(
+                      _propertyType.isEmpty ? 'Property type' : _propertyType,
+                      style: const TextStyle(
+                        color: AppColors.brandDark,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
                 ActionChip(
-                    label: const Text('Save search'),
+                    label: const Text('Save search',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () async {
                       await ref
                           .read(customerRepositoryProvider)
@@ -137,25 +161,43 @@ class _PropertyHomePageState extends ConsumerState<PropertyHomePage> {
                       }
                     }),
                 ActionChip(
-                    label: const Text('EMI'),
+                    label: const Text('EMI',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () => context.push('/app/find-home/emi')),
                 ActionChip(
-                    label: const Text('Estimate'),
+                    label: const Text('Estimate',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () =>
                         context.push('/app/find-home/value-estimator')),
                 ActionChip(
-                    label: const Text('My properties'),
+                    label: const Text('My properties',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () =>
                         context.push('/app/find-home/my-properties')),
                 ActionChip(
-                    label: const Text('Saved'),
+                    label: const Text('Saved',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () =>
                         context.push('/app/find-home/saved-searches')),
                 ActionChip(
-                    label: const Text('Messages'),
+                    label: const Text('Messages',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () => context.push('/app/find-home/messages')),
                 ActionChip(
-                    label: const Text('Rent tracker'),
+                    label: const Text('Rent tracker',
+                        style: TextStyle(
+                            color: AppColors.brandDark,
+                            fontWeight: FontWeight.w800)),
                     onPressed: () =>
                         context.push('/app/find-home/rent-tracker')),
               ],

@@ -56,16 +56,33 @@ class CustomerScaffold extends ConsumerWidget {
                 height: 32,
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: AppColors.softGreen, // soft teal brand tile
+                  color: AppColors.softGreen,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white70),
                 ),
-                child: Image.asset('assets/images/p4u-logo.png',
-                    fit: BoxFit.contain),
+                child: Image.asset(
+                  'assets/images/p4u-logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.home_rounded,
+                    color: AppColors.primaryDark,
+                    size: 20,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Flexible(
-                  child: Text(title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ],
           ),
           actions: [

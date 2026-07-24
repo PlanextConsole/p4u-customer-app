@@ -1098,6 +1098,8 @@ class _CustomerWalletPageState extends ConsumerState<CustomerWalletPage> {
     if (txns.isEmpty) {
       txns = apiItems(reward['recentHistory']);
     }
+    // Keep home header chip in sync with the wallet page balance.
+    ref.invalidate(landingWalletProvider);
     return (reward, txns);
   }
 }

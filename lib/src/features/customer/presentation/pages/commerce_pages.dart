@@ -522,7 +522,7 @@ class _LandingWallet extends ConsumerWidget {
                     child: Text(
                       balance?.maybeWhen(
                             data: (row) =>
-                                '\u20B9${row.n('displayAmount', row.n('balance')).round()}',
+                                '\u20B9${row.n('displayAmount', row.n('balance', row.n('points'))).round()}',
                             loading: () => '...',
                             orElse: () => '\u20B90',
                           ) ??

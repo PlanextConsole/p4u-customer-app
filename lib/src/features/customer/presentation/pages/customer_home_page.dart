@@ -103,7 +103,13 @@ class _HomeHeader extends StatelessWidget {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Image.asset('assets/images/p4u-logo.png'),
+                  child: Image.asset(
+                    'assets/images/p4u-logo.png',
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.home_rounded,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -162,17 +168,15 @@ class _HomeHeader extends StatelessWidget {
                     constraints: const BoxConstraints(minWidth: 88),
                     padding: const EdgeInsets.symmetric(horizontal: 13),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF5A818),
+                      color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black12, blurRadius: 5),
-                      ],
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
-                          Icons.monetization_on_outlined,
+                          Icons.account_balance_wallet_outlined,
                           color: Colors.white,
                           size: 19,
                         ),
@@ -180,7 +184,10 @@ class _HomeHeader extends StatelessWidget {
                         Text(
                           wallet.maybeWhen(
                             data: (row) => row
-                                .n('displayAmount', row.n('balance'))
+                                .n(
+                                  'displayAmount',
+                                  row.n('balance', row.n('points')),
+                                )
                                 .round()
                                 .toString(),
                             loading: () => '...',
@@ -202,13 +209,13 @@ class _HomeHeader extends StatelessWidget {
                   customBorder: const CircleBorder(),
                   child: CircleAvatar(
                     radius: 22,
-                    backgroundColor: const Color(0xFFF5A818),
+                    backgroundColor: Colors.white,
                     child: Text(
                       userName.trim().isEmpty
                           ? 'U'
                           : userName.trim().characters.first.toUpperCase(),
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.primaryDark,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -242,9 +249,20 @@ class _HomeHeader extends StatelessWidget {
                       child: Text(
                         tab.$1,
                         style: TextStyle(
-                          color: active ? AppColors.primaryDark : Colors.white,
+                          color: active
+                              ? AppColors.primaryDark
+                              : const Color(0xFFF2FFFE),
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
+                          shadows: active
+                              ? null
+                              : const [
+                                  Shadow(
+                                    color: Color(0x66000000),
+                                    blurRadius: 2,
+                                    offset: Offset(0, 0.5),
+                                  ),
+                                ],
                         ),
                       ),
                     ),
@@ -670,10 +688,10 @@ class _RideActions extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: i == 0
-                            ? const [Color(0xFFFFF0D5), Color(0xFFFFFAEF)]
+                            ? const [Color(0xFFDDF5EE), Color(0xFFEAF9F6)]
                             : i == 1
-                                ? const [Color(0xFFDDF5EE), Color(0xFFEAF9F6)]
-                                : const [Color(0xFFE4EFFF), Color(0xFFF1F6FF)],
+                                ? const [Color(0xFFD5F0EE), Color(0xFFE8F8F6)]
+                                : const [Color(0xFFCFE9E7), Color(0xFFE6F5F3)],
                       ),
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -987,7 +1005,7 @@ class _LargeCategory extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5A818),
+                          color: AppColors.primary,
                           borderRadius: BorderRadius.circular(9),
                         ),
                         child: const Text(
@@ -1461,7 +1479,7 @@ class _NewsletterCardState extends State<_NewsletterCard> {
                   TextSpan(text: 'Get '),
                   TextSpan(
                     text: '20% Discount',
-                    style: TextStyle(color: Color(0xFFF5A818)),
+                    style: TextStyle(color: Color(0xFFB8FFF8)),
                   ),
                   TextSpan(text: ' On Your\nFirst Purchase'),
                 ],
@@ -1647,19 +1665,19 @@ class _ClassifiedBanner extends StatelessWidget {
 class _ReferenceBottomNav extends StatelessWidget {
   const _ReferenceBottomNav();
   static const _items = <(String, IconData, String)>[
-    ('Dashboard', Icons.home_outlined, '/app/home'),
+    ('Home', Icons.home_outlined, '/app/home'),
     ('Shop', Icons.shopping_bag_outlined, '/app/browse'),
     ('Socio', Icons.campaign_outlined, '/app/social'),
     ('Services', Icons.handyman_outlined, '/app/services'),
-    ('Find Home', Icons.apartment_outlined, '/app/find-home'),
-    ('Classified', Icons.newspaper_outlined, '/app/classifieds'),
+    ('Homes', Icons.apartment_outlined, '/app/find-home'),
+    ('Ads', Icons.newspaper_outlined, '/app/classifieds'),
     if (kFoodModuleEnabled) ('Food', Icons.restaurant_outlined, '/app/food'),
   ];
   @override
   Widget build(BuildContext context) => SafeArea(
         top: false,
         child: Container(
-          height: 68,
+          height: 72,
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(top: BorderSide(color: AppColors.border)),
@@ -1681,19 +1699,21 @@ class _ReferenceBottomNav extends StatelessWidget {
                               size: 22,
                               color: i == 0
                                   ? AppColors.primary
-                                  : const Color(0xFF60717B),
+                                  : AppColors.brandDark.withValues(alpha: 0.72),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             Text(
                               _items[i].$1,
                               maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 8,
+                                fontSize: 10,
                                 fontWeight:
-                                    i == 0 ? FontWeight.w900 : FontWeight.w600,
+                                    i == 0 ? FontWeight.w900 : FontWeight.w700,
                                 color: i == 0
-                                    ? AppColors.primary
-                                    : const Color(0xFF60717B),
+                                    ? AppColors.primaryDark
+                                    : AppColors.brandDark.withValues(alpha: 0.78),
                               ),
                             ),
                           ],

@@ -755,14 +755,14 @@ class CustomerRepository {
         data['history']);
     history = history.where((row) => !_isPointsReversal(row)).toList();
 
-    num balance = 0;
-    if (wallet != null) {
-      balance =
-          wallet.n('displayAmount', wallet.n('balance', wallet.n('points')));
-    }
-    if (balance == 0) {
-      balance = data.n('balance', data.n('displayAmount', data.n('points')));
-    }
+    // Prefer live reward-points balance; wallet summary may report cash 0
+    // while points still exist (match web home fallback behavior).
+    final rewardBalance =
+        data.n('balance', data.n('displayAmount', data.n('points')));
+    final walletBalance = wallet == null
+        ? 0
+        : wallet.n('displayAmount', wallet.n('balance', wallet.n('points')));
+    final balance = walletBalance > 0 ? walletBalance : rewardBalance;
 
     num earned = 0;
     num redeemed = 0;
