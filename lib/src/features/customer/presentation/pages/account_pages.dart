@@ -1154,6 +1154,22 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
               final status = booking.s('status', 'pending');
               final canCancel = ['pending', 'approved', 'confirmed', 'in_progress']
                   .contains(status.toLowerCase());
+              final meta = booking['metadata'];
+              final metaMap = meta is Map
+                  ? Map<String, dynamic>.from(meta)
+                  : <String, dynamic>{};
+              final serviceName = booking.s(
+                'service_name',
+                metaMap.s('serviceName', metaMap.s('service_name', 'Service Booking')),
+              );
+              final vendorName = booking.s(
+                'vendor_name',
+                metaMap.s('vendorName', metaMap.s('vendor_name')),
+              );
+              final imageUrl = metaMap.s(
+                'serviceImage',
+                metaMap.s('service_image', metaMap.s('imageUrl', metaMap.s('image'))),
+              );
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: AppCard(
@@ -1162,12 +1178,25 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.home_repair_service_rounded,
-                              color: AppColors.primary),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: imageUrl.isNotEmpty
+                                ? RemoteImage(url: imageUrl, width: 56, height: 56)
+                                : Container(
+                                    width: 56,
+                                    height: 56,
+                                    color: AppColors.accent,
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.home_repair_service_rounded,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              booking.s('service_name', 'Service Booking'),
+                              serviceName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -1178,7 +1207,7 @@ class _CustomerBookingsPageState extends ConsumerState<CustomerBookingsPage> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      Text(booking.s('vendor_name'),
+                      Text(vendorName,
                           style: const TextStyle(color: AppColors.muted)),
                       const SizedBox(height: 6),
                       Text(

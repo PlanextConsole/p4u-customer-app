@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -1551,13 +1554,61 @@ class _CustomerProductPageState extends ConsumerState<CustomerProductPage> {
   }
 }
 
-class CustomerCartPage extends ConsumerWidget {
+class CustomerCartPage extends ConsumerStatefulWidget {
   const CustomerCartPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerCartPage> createState() => _CustomerCartPageState();
+}
+
+class _CustomerCartPageState extends ConsumerState<CustomerCartPage> {
+  static const _savedKey = 'p4u_cart_saved';
+  static const _scheduleKey = 'p4u_cart_delivery_schedule';
+  String _tab = 'shop';
+  String _deliveryMode = 'anytime'; // anytime | schedule
+  List<Map<String, dynamic>> _saved = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSaved();
+  }
+
+  Future<void> _loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_savedKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        setState(() {
+          _saved = decoded
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_savedKey, jsonEncode(_saved));
+  }
+
+  Future<void> _persistSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _scheduleKey,
+      jsonEncode({'mode': _deliveryMode}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(customerAuthStateProvider).valueOrNull;
     final summary = ref.watch(cartSummaryProvider);
+    final address = ref.watch(customerAddressProvider).valueOrNull?.selectedAddress;
     return CustomerScaffold(
       title: 'Cart',
       showBack: true,
@@ -1569,149 +1620,549 @@ class CustomerCartPage extends ConsumerWidget {
           message: e.toString(),
         ),
         data: (cart) {
-          if (cart.items.isEmpty) {
-            return EmptyState(
-              icon: Icons.shopping_cart_rounded,
-              title: 'Your cart is empty',
-              message: 'Add products from the shop to checkout.',
-              action: FilledButton(
-                onPressed: () => context.push('/app/browse'),
-                child: const Text('Shop Now'),
-              ),
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          return Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  children: [
+                    _CartTabs(
+                      shopCount: cart.items.length,
+                      savedCount: _saved.length,
+                      tab: _tab,
+                      onChanged: (v) => setState(() => _tab = v),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_tab == 'saved') ...[
+                      if (_saved.isEmpty)
+                        const EmptyState(
+                          icon: Icons.favorite_border_rounded,
+                          title: 'No saved items',
+                          message: 'Save cart items for later from the Shop tab.',
+                        )
+                      else
+                        for (final item in _saved)
+                          _SavedCartTile(
+                            item: item,
+                            onMoveToCart: () async {
+                              try {
+                                await ref.read(customerRepositoryProvider).addToCart(
+                                  {
+                                    'id': item['productId'] ?? item['id'],
+                                    'name': item['title'],
+                                    'price': item['price'],
+                                    'image': item['image'],
+                                    'vendorId': item['vendorId'],
+                                    'vendor_name': item['vendor'],
+                                  },
+                                  qty: (item['qty'] as num?)?.toInt() ?? 1,
+                                );
+                                setState(() {
+                                  _saved.removeWhere((s) =>
+                                      '${s['productId'] ?? s['id']}' ==
+                                      '${item['productId'] ?? item['id']}');
+                                  _tab = 'shop';
+                                });
+                                await _persistSaved();
+                                ref.invalidate(cartSummaryProvider);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())),
+                                  );
+                                }
+                              }
+                            },
+                            onRemove: () async {
+                              setState(() {
+                                _saved.removeWhere((s) =>
+                                    '${s['productId'] ?? s['id']}' ==
+                                    '${item['productId'] ?? item['id']}');
+                              });
+                              await _persistSaved();
+                            },
+                          ),
+                    ] else if (cart.items.isEmpty) ...[
+                      const EmptyState(
+                        icon: Icons.shopping_cart_rounded,
+                        title: 'Your cart is empty',
+                        message: 'Add products from the shop to checkout.',
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () => context.push('/app/browse'),
+                        child: const Text('Shop Now'),
+                      ),
+                    ] else ...[
+                      _DeliverToCard(
+                        address: address,
+                        onChange: () async {
+                          await showCustomerAddressSelector(context);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _DeliveryScheduleCard(
+                        mode: _deliveryMode,
+                        onChanged: (v) => setState(() => _deliveryMode = v),
+                      ),
+                      const SizedBox(height: 12),
+                      for (final item in cart.items)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _CartProductTile(
+                            item: item,
+                            onQty: (qty) async {
+                              try {
+                                await ref
+                                    .read(customerRepositoryProvider)
+                                    .updateCartItem(item.id, qty);
+                                ref.invalidate(cartSummaryProvider);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())),
+                                  );
+                                }
+                              }
+                            },
+                            onSaveLater: () async {
+                              setState(() {
+                                _saved.removeWhere((s) => '${s['id']}' == item.id);
+                                _saved.insert(0, {
+                                  'id': item.id,
+                                  'productId': item.productId,
+                                  'title': item.title,
+                                  'price': item.price,
+                                  'image': item.image,
+                                  'vendor': item.vendor,
+                                  'vendorId': item.vendorId,
+                                  'qty': item.qty,
+                                });
+                                _tab = 'saved';
+                              });
+                              await _persistSaved();
+                              try {
+                                await ref
+                                    .read(customerRepositoryProvider)
+                                    .updateCartItem(item.id, 0);
+                                ref.invalidate(cartSummaryProvider);
+                              } catch (_) {}
+                            },
+                            onRemove: () async {
+                              try {
+                                await ref
+                                    .read(customerRepositoryProvider)
+                                    .updateCartItem(item.id, 0);
+                                ref.invalidate(cartSummaryProvider);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                      AppCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Bill Details',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w900, fontSize: 16)),
+                            const SizedBox(height: 10),
+                            _TotalRow('Item Total (MRP)', cart.subtotal),
+                            _TotalRow('Subtotal', cart.subtotal),
+                            if (cart.platformFee > 0)
+                              _TotalRow('Platform fee', cart.platformFee),
+                            if (cart.deliveryFee > 0)
+                              _TotalRow('Delivery', cart.deliveryFee),
+                            const Divider(),
+                            _TotalRow('Total Amount', cart.total, bold: true),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Review your order and address details to avoid cancellations.',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'You can only cancel the order until it is accepted by the vendor. Redeemed wallet points are not refundable.',
+                              style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.4),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                child: const Row(
+              ),
+              if (_tab == 'shop' && cart.items.isNotEmpty)
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: AppColors.border)),
+                    ),
+                    child: FilledButton(
+                      onPressed: auth == null
+                          ? () => context.push('/app/login')
+                          : () async {
+                              await _persistSchedule();
+                              if (context.mounted) context.push('/app/payment');
+                            },
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        auth == null ? 'Login to Checkout' : 'Proceed To Checkout',
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CartTabs extends StatelessWidget {
+  const _CartTabs({
+    required this.shopCount,
+    required this.savedCount,
+    required this.tab,
+    required this.onChanged,
+  });
+
+  final int shopCount;
+  final int savedCount;
+  final String tab;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          for (final entry in [
+            ('shop', 'Shop ($shopCount)'),
+            ('saved', 'Saved ($savedCount)'),
+          ])
+            Expanded(
+              child: InkWell(
+                onTap: () => onChanged(entry.$1),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: tab == entry.$1 ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: tab == entry.$1
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 4,
+                            )
+                          ]
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    entry.$2,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: tab == entry.$1
+                          ? AppColors.brandDark
+                          : AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliverToCard extends StatelessWidget {
+  const _DeliverToCard({required this.address, required this.onChange});
+
+  final Map<String, dynamic>? address;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = address == null;
+    return AppCard(
+      child: Row(
+        children: [
+          const Icon(Icons.location_on_outlined, color: AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Deliver To',
+                    style: TextStyle(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(
+                  empty
+                      ? 'No address selected'
+                      : [
+                          address!.s('name', address!.s('fullName')),
+                          address!.s('address_line', address!.s('line1')),
+                          '${address!.s('city')} ${address!.s('pincode')}',
+                        ].where((e) => e.trim().isNotEmpty).join(', '),
+                  style: TextStyle(
+                    color: empty ? AppColors.muted : AppColors.brandDark,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onChange,
+            child: Text(empty ? 'Add' : 'Change',
+                style: const TextStyle(
+                    color: AppColors.primary, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryScheduleCard extends StatelessWidget {
+  const _DeliveryScheduleCard({required this.mode, required this.onChanged});
+
+  final String mode;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [
+      ('anytime', 'Any Time', 'Standard delivery at the earliest', Icons.schedule_rounded),
+      ('schedule', 'Schedule An Appointment', 'Choose a specific date & time slot', Icons.event_available_rounded),
+    ];
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Delivery Schedule',
+              style: TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          for (final opt in options)
+            InkWell(
+              onTap: () => onChanged(opt.$1),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
                   children: [
                     CircleAvatar(
                       backgroundColor: AppColors.accent,
-                      child: Icon(
-                        Icons.timer_rounded,
-                        color: AppColors.primary,
-                      ),
+                      child: Icon(opt.$4, color: AppColors.primary),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Delivery in 10 minutes',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 17,
-                            ),
-                          ),
-                          Text(
-                            'Shipment of all items',
-                            style: TextStyle(
-                              color: AppColors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
+                          Text(opt.$2,
+                              style: const TextStyle(fontWeight: FontWeight.w800)),
+                          Text(opt.$3,
+                              style: const TextStyle(
+                                  color: AppColors.muted, fontSize: 12)),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-              for (final item in cart.items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: AppCard(
-                    child: Row(
-                      children: [
-                        RemoteImage(url: item.image, width: 70, height: 70),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                money(item.price),
-                                style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        _QtyStepper(
-                          qty: item.qty,
-                          onChanged: (qty) async {
-                            try {
-                              await ref
-                                  .read(customerRepositoryProvider)
-                                  .updateCartItem(item.id, qty);
-                              ref.invalidate(cartSummaryProvider);
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString())),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ],
+                    Icon(
+                      mode == opt.$1
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      color: mode == opt.$1
+                          ? AppColors.primary
+                          : AppColors.muted,
                     ),
-                  ),
-                ),
-              AppCard(
-                child: Column(
-                  children: [
-                    _TotalRow('Subtotal', cart.subtotal),
-                    if (cart.tax > 0) _TotalRow('Tax', cart.tax),
-                    if (cart.platformFee > 0)
-                      _TotalRow('Platform fee', cart.platformFee),
-                    if (cart.gstOnPlatformFee > 0)
-                      _TotalRow('GST on fee', cart.gstOnPlatformFee),
-                    if (cart.deliveryFee > 0)
-                      _TotalRow('Delivery', cart.deliveryFee),
-                    if (cart.surgeCost > 0) _TotalRow('Surge', cart.surgeCost),
-                    if (cart.discount > 0)
-                      _TotalRow('Discount', -cart.discount),
-                    if (cart.pointsRedeemedValue > 0)
-                      _TotalRow('Points redeemed', -cart.pointsRedeemedValue),
-                    if (cart.couponDiscount > 0)
-                      _TotalRow('Coupon', -cart.couponDiscount),
-                    const Divider(),
-                    _TotalRow('Total', cart.total, bold: true),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: auth == null
-                    ? () => context.push('/app/login')
-                    : () => context.push('/app/payment'),
-                icon: const Icon(Icons.payment_rounded),
-                label: Text(
-                  auth == null ? 'Login to Checkout' : 'Proceed to Payment',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartProductTile extends StatelessWidget {
+  const _CartProductTile({
+    required this.item,
+    required this.onQty,
+    required this.onSaveLater,
+    required this.onRemove,
+  });
+
+  final CartItem item;
+  final ValueChanged<int> onQty;
+  final VoidCallback onSaveLater;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RemoteImage(url: item.image, width: 72, height: 72),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Vendor: ${item.vendor.isEmpty ? '—' : item.vendor}',
+                      style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(money(item.price),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    const Text('Eligible for FREE Shipping',
+                        style: TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12)),
+                  ],
                 ),
+              ),
+              const Row(
+                children: [
+                  Icon(Icons.timer_outlined, size: 14, color: AppColors.primary),
+                  SizedBox(width: 4),
+                  Text('30 Mins',
+                      style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12)),
+                ],
               ),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _QtyStepper(qty: item.qty, onChanged: onQty),
+              const Spacer(),
+              TextButton(
+                onPressed: onSaveLater,
+                child: const Text('SAVE FOR LATER',
+                    style: TextStyle(
+                        color: AppColors.primary, fontWeight: FontWeight.w800)),
+              ),
+              TextButton(
+                onPressed: onRemove,
+                child: const Text('REMOVE',
+                    style: TextStyle(
+                        color: AppColors.danger, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedCartTile extends StatelessWidget {
+  const _SavedCartTile({
+    required this.item,
+    required this.onMoveToCart,
+    required this.onRemove,
+  });
+
+  final Map<String, dynamic> item;
+  final VoidCallback onMoveToCart;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        child: Row(
+          children: [
+            RemoteImage(url: item['image']?.toString(), width: 64, height: 64),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${item['title'] ?? 'Product'}',
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                  Text(money(item['price'] ?? 0),
+                      style: const TextStyle(
+                          color: AppColors.primary, fontWeight: FontWeight.w900)),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: onMoveToCart,
+                        child: const Text('MOVE TO CART',
+                            style: TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      TextButton(
+                        onPressed: onRemove,
+                        child: const Text('REMOVE',
+                            style: TextStyle(
+                                color: AppColors.danger,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2036,6 +2487,31 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
       if (address == null || address.s('id').isEmpty) {
         throw const ApiException('Select a delivery address before placing the order.');
       }
+      if (_payMethod == 'online') {
+        const keyId = String.fromEnvironment(
+          'RAZORPAY_KEY_ID',
+          defaultValue: '',
+        );
+        if (keyId.isEmpty) {
+          throw const ApiException(
+            'Online payment is not configured. Set RAZORPAY_KEY_ID or use Cash on Delivery.',
+          );
+        }
+      }
+
+      Map<String, dynamic>? deliverySchedule;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('p4u_cart_delivery_schedule');
+        if (raw != null && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map) {
+            deliverySchedule = Map<String, dynamic>.from(decoded);
+          }
+        }
+      } catch (_) {}
+      deliverySchedule ??= {'mode': 'anytime'};
+
       final repo = ref.read(customerRepositoryProvider);
       final order = await repo.placeOrder(
         customerId: customerId,
@@ -2043,6 +2519,7 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         address: address,
         paymentMode: _payMethod,
         couponCode: _couponCode.isEmpty ? null : _couponCode,
+        deliverySchedule: deliverySchedule,
       );
       if (_payMethod != 'online') {
         if (mounted) {
@@ -2063,25 +2540,29 @@ class _PaymentPageState extends ConsumerState<PaymentPage> {
         'RAZORPAY_KEY_ID',
         defaultValue: '',
       );
-      if (keyId.isEmpty) {
-        throw const ApiException(
-          'Online payment is not configured. Set RAZORPAY_KEY_ID or use Cash on Delivery.',
+
+      Map<String, dynamic> intent;
+      try {
+        intent = await repo.createOrderPayment(order.s('id'));
+      } catch (_) {
+        intent = await repo.createPaymentIntentForOrder(
+          orderId: order.s('id'),
+          amount: summary.total,
         );
       }
-
-      final intent = await repo.createPaymentIntentForOrder(
-        orderId: order.s('id'),
-        amount: summary.total,
+      final providerRef = intent.s(
+        'providerRef',
+        intent.s('provider_ref', intent.s('providerOrderId')),
       );
-      final providerRef = intent.s('providerRef', intent.s('provider_ref'));
       if (providerRef.isEmpty) {
         throw const ApiException('Payment provider did not return an order reference.');
       }
 
+      final payAmount = intent.n('amount', summary.total);
       _pendingOrderId = order.s('id');
       _razorpay?.open({
         'key': keyId,
-        'amount': (summary.total * 100).round(),
+        'amount': (payAmount * 100).round(),
         'currency': intent.s('currency', 'INR'),
         'name': 'Planext4u',
         'description': 'Order ${order.s('orderRef', order.s('id'))}',
@@ -2429,9 +2910,17 @@ class _CustomerOrderDetailPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Status: ${order.s('payment_status', 'pending')}'),
+                    Text('Status: ${order.s('payment_status', order.s('status', 'pending'))}'),
                     if (order.s('payment_ref').isNotEmpty)
                       Text('Ref: ${order.s('payment_ref')}'),
+                    if (_needsPayNow(order)) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => _payNow(order),
+                        icon: const Icon(Icons.payment_rounded),
+                        label: const Text('Pay now'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2563,6 +3052,102 @@ class _CustomerOrderDetailPageState
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  bool _needsPayNow(Map<String, dynamic> order) {
+    final meta = order['metadata'] is Map
+        ? Map<String, dynamic>.from(order['metadata'] as Map)
+        : <String, dynamic>{};
+    final paymentStatus =
+        order.s('payment_status', meta.s('paymentStatus')).toLowerCase();
+    final paymentMode =
+        order.s('payment_mode', meta.s('paymentMode')).toLowerCase();
+    final status = order.s('status').toLowerCase();
+    if (paymentMode == 'cod' || paymentStatus == 'cod') return false;
+    if (paymentStatus == 'paid' || status == 'paid') return false;
+    return status == 'created' ||
+        paymentStatus == 'pending' ||
+        paymentStatus == 'failed';
+  }
+
+  Future<void> _payNow(Map<String, dynamic> order) async {
+    const keyId = String.fromEnvironment('RAZORPAY_KEY_ID', defaultValue: '');
+    if (keyId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Online payment is not configured on this build.'),
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      final repo = ref.read(customerRepositoryProvider);
+      Map<String, dynamic> intent;
+      try {
+        intent = await repo.createOrderPayment(widget.orderId);
+      } catch (_) {
+        intent = await repo.createPaymentIntentForOrder(
+          orderId: widget.orderId,
+          amount: order.n('total'),
+        );
+      }
+      final providerRef = intent.s(
+        'providerRef',
+        intent.s('provider_ref', intent.s('providerOrderId')),
+      );
+      if (providerRef.isEmpty) {
+        throw const ApiException('Payment provider did not return an order reference.');
+      }
+      final razorpay = Razorpay();
+      razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, (PaymentSuccessResponse response) async {
+        try {
+          await repo.verifyPaymentPayload({
+            'razorpay_order_id': response.orderId,
+            'razorpay_payment_id': response.paymentId,
+            'razorpay_signature': response.signature,
+          });
+          await repo.clearCartAfterPaid();
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Payment successful')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.toString())),
+            );
+          }
+        } finally {
+          razorpay.clear();
+        }
+      });
+      razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse response) {
+        razorpay.clear();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response.message ?? 'Payment failed')),
+          );
+        }
+      });
+      razorpay.open({
+        'key': keyId,
+        'amount': (intent.n('amount', order.n('total')) * 100).round(),
+        'currency': intent.s('currency', 'INR'),
+        'name': 'Planext4u',
+        'description': 'Order ${order.s('orderRef', order.s('id'))}',
+        'order_id': providerRef,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
       }
     }
   }

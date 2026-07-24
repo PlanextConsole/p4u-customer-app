@@ -222,6 +222,7 @@ class CustomerApi {
     String? addressId,
     Map<String, dynamic>? shippingAddress,
     String paymentMode = 'cod',
+    Map<String, dynamic>? deliverySchedule,
   }) {
     final body = <String, dynamic>{
       'paymentMode': paymentMode,
@@ -234,9 +235,14 @@ class CustomerApi {
     final a = addressId?.trim();
     if (a != null && a.isNotEmpty) body['addressId'] = a;
     if (shippingAddress != null) body['shippingAddress'] = shippingAddress;
+    if (deliverySchedule != null) body['deliverySchedule'] = deliverySchedule;
     return _api.postJson('/api/v1/commerce/orders/from-cart',
         body: body, auth: true);
   }
+
+  Future<Map<String, dynamic>> createOrderPayment(String orderId) =>
+      _api.postJson('/api/v1/commerce/orders/$orderId/payment',
+          body: const {}, auth: true);
 
   Future<Map<String, dynamic>> createDirectOrder(Map<String, dynamic> body) =>
       _api.postJson('/api/v1/commerce/orders', body: body, auth: true);
@@ -431,6 +437,13 @@ class CustomerApi {
       _api.deleteJson('/api/v1/social/posts/$postId/like', auth: true);
   Future<Map<String, dynamic>> sharePost(String postId) =>
       _api.postJson('/api/v1/social/posts/$postId/share', auth: true);
+
+  Future<Map<String, dynamic>> repostPost(String postId, {String? caption}) =>
+      _api.postJson('/api/v1/social/posts/$postId/repost',
+          body: {
+            if (caption != null && caption.trim().isNotEmpty) 'caption': caption.trim(),
+          },
+          auth: true);
   Future<Map<String, dynamic>> savePost(String postId) =>
       _api.postJson('/api/v1/social/posts/$postId/save', auth: true);
   Future<Map<String, dynamic>> unsavePost(String postId) =>

@@ -595,10 +595,10 @@ class _SocialPostCardState extends ConsumerState<SocialPostCard> {
       widget.post['shares_count'] = _shares;
     });
     try {
-      await ref.read(customerRepositoryProvider).shareSocialPost(postId);
+      await ref.read(customerRepositoryProvider).repostSocialPost(postId);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Post shared')));
+            .showSnackBar(const SnackBar(content: Text('Reposted to your feed')));
       }
     } catch (e) {
       if (mounted) {
@@ -804,7 +804,7 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
   XFile? _picked;
   bool _isVideo = false;
   String? _category;
-  String _audience = 'public'; // public | private
+  String _audience = 'followers'; // followers | public | private
   String _commentPermission = 'everyone'; // everyone | followers | none
   bool _hideLikeCount = false;
   final List<Map<String, dynamic>> _linkedProducts = [];
@@ -858,6 +858,7 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
       setState(() {
         _picked = file;
         _isVideo = pickVideo;
+        _audience = pickVideo ? 'public' : 'followers';
         _error = null;
       });
     } catch (e) {
@@ -933,8 +934,12 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
       await repo.createSocialPost(auth.supabaseUid ?? auth.id, {
         'contentText': _caption.text.trim(),
         'mediaUrls': [url],
-        'postType': uploaded.s('type', _isVideo ? 'video' : 'image'),
-        'visibility': _audience,
+        'postType': _isVideo
+            ? 'reel'
+            : uploaded.s('type', 'image'),
+        'visibility': _isVideo
+            ? (_audience == 'private' ? 'private' : 'public')
+            : (_audience == 'private' ? 'private' : 'followers'),
         'location':
             _location.text.trim().isEmpty ? null : _location.text.trim(),
         'tags': tags,
@@ -1122,11 +1127,22 @@ class _SocialCreatePostPageState extends ConsumerState<SocialCreatePostPage> {
                   decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.visibility_outlined),
                       labelText: 'Audience'),
-                  items: const [
-                    DropdownMenuItem(value: 'public', child: Text('Public')),
-                    DropdownMenuItem(value: 'private', child: Text('Private')),
-                  ],
-                  onChanged: (v) => setState(() => _audience = v ?? 'public'),
+                  items: _isVideo
+                      ? const [
+                          DropdownMenuItem(
+                              value: 'public', child: Text('Public (Reels)')),
+                          DropdownMenuItem(
+                              value: 'private', child: Text('Private')),
+                        ]
+                      : const [
+                          DropdownMenuItem(
+                              value: 'followers',
+                              child: Text('Followers only')),
+                          DropdownMenuItem(
+                              value: 'private', child: Text('Private')),
+                        ],
+                  onChanged: (v) => setState(
+                      () => _audience = v ?? (_isVideo ? 'public' : 'followers')),
                 ),
                 const SizedBox(height: 12),
                 // Comment permission
@@ -1958,10 +1974,10 @@ class _ReelActionsState extends ConsumerState<_ReelActions> {
       widget.post['shares_count'] = _shares;
     });
     try {
-      await ref.read(customerRepositoryProvider).shareSocialPost(id);
+      await ref.read(customerRepositoryProvider).repostSocialPost(id);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Post shared')));
+            .showSnackBar(const SnackBar(content: Text('Reposted to your feed')));
       }
     } catch (error) {
       if (mounted) {
@@ -3049,26 +3065,44 @@ class _SocialSettingsPageState extends ConsumerState<SocialSettingsPage> {
   }
 
   Widget _allowFromSelect(String label, String key) {
-    final value = (_settings[key] ?? 'everyone').toString();
+    // Canonical values match socio-management MessageService / SocioSettingsService.
+    const options = <String>[
+      'Everyone',
+      'People you follow',
+      'Your followers',
+      'No one',
+    ];
+    final raw = (_settings[key] ?? 'Everyone').toString();
+    final value = options.contains(raw)
+        ? raw
+        : _normalizeAllowFrom(raw);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Expanded(child: Text(label)),
           DropdownButton<String>(
-            value: const ['everyone', 'followers', 'none'].contains(value)
-                ? value
-                : 'everyone',
-            items: const [
-              DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
-              DropdownMenuItem(value: 'followers', child: Text('Followers')),
-              DropdownMenuItem(value: 'none', child: Text('No one')),
+            value: options.contains(value) ? value : 'Everyone',
+            items: [
+              for (final opt in options)
+                DropdownMenuItem(value: opt, child: Text(opt)),
             ],
-            onChanged: (v) => setState(() => _settings[key] = v ?? 'everyone'),
+            onChanged: (v) => setState(() => _settings[key] = v ?? 'Everyone'),
           ),
         ],
       ),
     );
+  }
+
+  String _normalizeAllowFrom(String raw) {
+    final lower = raw.toLowerCase().trim();
+    if (lower == 'everyone') return 'Everyone';
+    if (lower == 'none' || lower == 'no one' || lower == 'off') return 'No one';
+    if (lower == 'followers' || lower == 'your followers') return 'Your followers';
+    if (lower == 'following' || lower == 'people you follow') {
+      return 'People you follow';
+    }
+    return 'Everyone';
   }
 
   String _notifLabel(String key) {

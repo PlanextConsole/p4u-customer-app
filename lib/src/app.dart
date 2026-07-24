@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/config/feature_flags.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/presentation/auth_pages.dart';
 import 'features/customer/presentation/pages/account_pages.dart';
@@ -20,6 +21,7 @@ GoRouter? _customerRouter;
 void openCustomerDeepLink(String raw) {
   var path = Uri.tryParse(raw)?.path ?? raw;
   if (path.startsWith('/food/')) path = '/app';
+  if (!kFoodModuleEnabled && path.startsWith('/app/food')) path = '/app/home';
   if (path.startsWith('/app/')) _customerRouter?.go(path);
 }
 
@@ -54,6 +56,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth = ref.read(customerAuthStateProvider).valueOrNull;
       final path = state.uri.path;
+      if (!kFoodModuleEnabled && path.startsWith('/app/food')) {
+        return '/app/home';
+      }
       final needsAuth = protectedPaths.any(
           (protected) => path == protected || path.startsWith('$protected/'));
       if (needsAuth && auth == null) {

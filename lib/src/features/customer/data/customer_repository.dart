@@ -1068,10 +1068,10 @@ class CustomerRepository {
             data['caption'] ??
             '',
         'mediaUrls': media,
+        'visibility': data['visibility'] ?? 'followers',
         'postType': data['post_type'] ??
             data['postType'] ??
             (media.isNotEmpty ? 'image' : 'text'),
-        'visibility': data['visibility'] ?? 'public',
         'location': data['location'],
         'tags': data['tags'] ?? const [],
         'category': data['category'] ?? 'general',
@@ -1323,6 +1323,9 @@ class CustomerRepository {
   Future<void> saveSocialPost(String postId) => _gateway.savePost(postId);
   Future<void> unsaveSocialPost(String postId) => _gateway.unsavePost(postId);
   Future<void> shareSocialPost(String postId) => _gateway.sharePost(postId);
+
+  Future<Map<String, dynamic>> repostSocialPost(String postId, {String? caption}) =>
+      _gateway.repostPost(postId, caption: caption);
   Future<void> followSocialUser(String userId) => _gateway.followUser(userId);
   Future<void> unfollowSocialUser(String userId) =>
       _gateway.unfollowUser(userId);
@@ -1582,6 +1585,7 @@ class CustomerRepository {
     required Map<String, dynamic>? address,
     String paymentMode = 'cod',
     String? couponCode,
+    Map<String, dynamic>? deliverySchedule,
   }) async {
     if (summary.items.isEmpty) throw const ApiException('Cart is empty.');
     final addressId = address?.s('id');
@@ -1610,6 +1614,7 @@ class CustomerRepository {
         addressId: addressId,
         shippingAddress: shippingAddress,
         paymentMode: paymentMode == 'online' ? 'razorpay' : paymentMode,
+        deliverySchedule: deliverySchedule,
       );
     } else {
       order = await _gateway.createDirectOrder({
@@ -1632,6 +1637,7 @@ class CustomerRepository {
         'redeemPoints': summary.pointsUsed,
         if (couponCode != null && couponCode.trim().isNotEmpty)
           'couponCode': couponCode.trim(),
+        if (deliverySchedule != null) 'deliverySchedule': deliverySchedule,
       });
     }
     if (paymentMode == 'cod') {
@@ -1639,6 +1645,9 @@ class CustomerRepository {
     }
     return _normalizeOrder(order);
   }
+
+  Future<Map<String, dynamic>> createOrderPayment(String orderId) =>
+      _gateway.createOrderPayment(orderId);
 
   Future<Map<String, dynamic>> createPaymentIntentForOrder({
     required String orderId,

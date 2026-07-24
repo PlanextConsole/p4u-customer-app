@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/config/feature_flags.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/map_ext.dart';
 import '../../../../core/widgets/remote_image.dart';
@@ -82,7 +83,7 @@ class _HomeHeader extends StatelessWidget {
     ('Services', '/app/services'),
     ('Find Home', '/app/find-home'),
     ('Classified', '/app/classifieds'),
-    ('Food', '/app/food'),
+    if (kFoodModuleEnabled) ('Food', '/app/food'),
   ];
 
   @override
@@ -1652,7 +1653,7 @@ class _ReferenceBottomNav extends StatelessWidget {
     ('Services', Icons.handyman_outlined, '/app/services'),
     ('Find Home', Icons.apartment_outlined, '/app/find-home'),
     ('Classified', Icons.newspaper_outlined, '/app/classifieds'),
-    ('Food', Icons.restaurant_outlined, '/app/food'),
+    if (kFoodModuleEnabled) ('Food', Icons.restaurant_outlined, '/app/food'),
   ];
   @override
   Widget build(BuildContext context) => SafeArea(
